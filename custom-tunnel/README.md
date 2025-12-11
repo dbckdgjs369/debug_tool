@@ -120,22 +120,16 @@ cd client
 npm start 8000
 ```
 
-### 자신의 React/Next.js/Vite 앱 공개
+### 자신의 React/Next.js 앱 공개
 
 ```bash
-# React/Vite 앱 실행 (포트 3000)
-npm start  # 또는 npm run dev
+# React 앱 실행 (포트 3000)
+npm start
 
 # 다른 터미널에서 터널 클라이언트 실행
 cd custom-tunnel/client
 npm start 3000
 ```
-
-**✨ Vite 설정 불필요!**
-
-- Host 헤더가 자동으로 `localhost`로 변경됩니다
-- `vite.config.js`에 `allowedHosts` 설정 추가할 필요 없음
-- 프로젝트 파일 수정 없이 바로 사용 가능!
 
 ## 🔍 각 컴포넌트 설명
 

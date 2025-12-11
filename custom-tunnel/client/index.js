@@ -36,10 +36,9 @@ ws.on("message", async (message) => {
       console.log(`📥 요청 받음: ${method} ${url}`);
 
       try {
-        // 헤더 정리 (Vite 호환)
+        // 불필요한 헤더 제거 (프록시 문제 방지)
         const cleanHeaders = { ...headers };
-        // Host 헤더를 localhost로 변경 (Vite allowedHosts 설정 불필요)
-        cleanHeaders["host"] = `localhost:${localPort}`;
+        delete cleanHeaders["host"];
         delete cleanHeaders["connection"];
         delete cleanHeaders["content-length"];
         delete cleanHeaders["transfer-encoding"];
