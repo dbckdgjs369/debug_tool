@@ -1,0 +1,67 @@
+{
+  "name": "remote-debug-tunnel",
+  "displayName": "Remote Debug Tunnel",
+  "description": "로컬 개발 서버를 다른 기기에서 접근하여 디버깅할 수 있도록 터널링을 제공합니다",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:remote-debug-tunnel.startTunnel",
+    "onCommand:remote-debug-tunnel.stopTunnel"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "remote-debug-tunnel.startTunnel",
+        "title": "Remote Debug: 터널 시작"
+      },
+      {
+        "command": "remote-debug-tunnel.stopTunnel",
+        "title": "Remote Debug: 터널 중지"
+      },
+      {
+        "command": "remote-debug-tunnel.showStatus",
+        "title": "Remote Debug: 상태 확인"
+      }
+    ],
+    "configuration": {
+      "title": "Remote Debug Tunnel",
+      "properties": {
+        "remoteDebugTunnel.defaultPort": {
+          "type": "number",
+          "default": 3000,
+          "description": "기본 포트 번호"
+        },
+        "remoteDebugTunnel.autoStart": {
+          "type": "boolean",
+          "default": false,
+          "description": "워크스페이스 열 때 자동으로 터널 시작"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/localtunnel": "^2.0.4",
+    "@types/node": "^20.x",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.x",
+    "@typescript-eslint/parser": "^6.x",
+    "eslint": "^8.x",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "localtunnel": "^2.0.2"
+  }
+}
