@@ -57,7 +57,7 @@ http://localhost:8080/abc12345
 
 ## 🔧 자신의 앱에 사용하기
 
-### React 앱
+### React 앱 (CRA)
 
 ```bash
 # 터미널 1: React 앱 실행
@@ -71,6 +71,23 @@ npm start
 cd custom-tunnel/client
 npm start 3000
 ```
+
+### Vite 앱 (React, Vue 등)
+
+```bash
+# 터미널 1: Vite 앱 실행
+npm run dev  # 포트 5173 (기본값)
+
+# 터미널 2: 터널 서버
+cd custom-tunnel/server
+npm start
+
+# 터미널 3: 터널 클라이언트
+cd custom-tunnel/client
+npm start 5173
+```
+
+**✨ Vite 설정 변경 불필요!** Host 헤더가 자동으로 localhost로 변경됩니다.
 
 ### Next.js 앱
 
