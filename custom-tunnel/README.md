@@ -208,11 +208,39 @@ const PORT = 5000; // 3000에서 5000으로 변경
 
 ### 실제 서버에 배포
 
-1. VPS 서버 준비 (AWS, DigitalOcean 등)
+**⚡ Oracle Cloud 무료 배포 (권장)**
+
+Oracle Cloud Always Free Tier를 사용하여 **완전 무료**로 영구 배포할 수 있습니다!
+
+```bash
+# 1. 로컬에서 서버로 파일 업로드
+scp -i ~/Downloads/ssh-key-*.key -r custom-tunnel ubuntu@YOUR_PUBLIC_IP:~/
+
+# 2. 서버에서 자동 배포 스크립트 실행
+ssh -i ~/Downloads/ssh-key-*.key ubuntu@YOUR_PUBLIC_IP
+sudo mv ~/custom-tunnel /opt/
+sudo chown -R ubuntu:ubuntu /opt/custom-tunnel
+cd /opt/custom-tunnel
+./deploy-oracle.sh
+
+# 3. 로컬에서 터널 연결
+cd custom-tunnel
+./connect.sh 3000 ws://YOUR_PUBLIC_IP
+```
+
+**📚 배포 가이드:**
+
+- [⚡ QUICK_DEPLOY.md](./QUICK_DEPLOY.md) - **10분 빠른 배포** (초보자 추천)
+- [🌩️ ORACLE_CLOUD_GUIDE.md](./ORACLE_CLOUD_GUIDE.md) - 상세 배포 가이드 (무료 평생 사용)
+- [🚀 DEPLOYMENT.md](./DEPLOYMENT.md) - 다양한 배포 옵션 (VPS, Docker, Railway 등)
+
+**다른 VPS 옵션:**
+
+1. VPS 서버 준비 (AWS, DigitalOcean, Vultr 등)
 2. 서버에 Node.js 설치
 3. 터널 서버 코드 업로드
-4. 포트를 80 또는 443으로 변경
-5. Nginx로 리버스 프록시 설정
+4. PM2로 프로세스 관리
+5. Nginx 리버스 프록시 설정 (선택)
 6. SSL 인증서 설치 (Let's Encrypt)
 7. 클라이언트에서 `wss://your-domain.com` 연결
 

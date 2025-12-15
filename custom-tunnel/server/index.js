@@ -34,19 +34,24 @@ const pendingRequests = new Map();
 console.log("🚀 Custom Tunnel Server Starting...");
 
 // WebSocket 연결 처리 (터널 클라이언트가 연결)
-wss.on("connection", (ws) => {
+wss.on("connection", (ws, req) => {
   const tunnelId = uuidv4().substring(0, 8);
 
   console.log(`✅ 새 터널 연결: ${tunnelId}`);
 
   tunnels.set(tunnelId, ws);
 
+  // 실제 서버 URL 생성 (배포 환경 고려)
+  const host = req.headers.host || "localhost:8080";
+  const protocol = host.includes("localhost") ? "http" : "https";
+  const serverUrl = `${protocol}://${host}/${tunnelId}`;
+
   // 클라이언트에게 터널 ID 전송
   ws.send(
     JSON.stringify({
       type: "connected",
       tunnelId: tunnelId,
-      url: `http://localhost:8080/${tunnelId}`,
+      url: serverUrl,
     })
   );
 
@@ -212,8 +217,9 @@ app.all("*", (req, res) => {
   });
 });
 
-const PORT = 8080;
+const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
   console.log(`🌐 터널 서버 실행 중: http://localhost:${PORT}`);
   console.log(`WebSocket 서버 준비 완료`);
+  console.log(`환경: ${process.env.NODE_ENV || "development"}`);
 });
