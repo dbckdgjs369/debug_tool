@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>🚇 Custom Tunnel Dashboard</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+
+      header {
+        text-align: center;
+        color: white;
+        margin-bottom: 30px;
+      }
+
+      header h1 {
+        font-size: 48px;
+        margin-bottom: 10px;
+      }
+
+      header p {
+        font-size: 18px;
+        opacity: 0.9;
+      }
+
+      .card {
+        background: white;
+        border-radius: 20px;
+        padding: 30px;
+        margin-bottom: 20px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+      }
+
+      .card h2 {
+        margin-bottom: 20px;
+        color: #333;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .status {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+      }
+
+      .status.running {
+        background: #10b981;
+      }
+
+      .status.stopped {
+        background: #ef4444;
+      }
+
+      .status.unknown {
+        background: #6b7280;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
+      }
+
+      .button {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 10px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      }
+
+      .button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .button-primary {
+        background: #667eea;
+        color: white;
+      }
+
+      .button-success {
+        background: #10b981;
+        color: white;
+      }
+
+      .button-danger {
+        background: #ef4444;
+        color: white;
+      }
+
+      .button-secondary {
+        background: #e5e7eb;
+        color: #374151;
+      }
+
+      .control-panel {
+        display: flex;
+        gap: 15px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      .input-group {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+
+      input[type="number"] {
+        padding: 12px;
+        border: 2px solid #e5e7eb;
+        border-radius: 10px;
+        font-size: 16px;
+        width: 120px;
+      }
+
+      input[type="number"]:focus {
+        outline: none;
+        border-color: #667eea;
+      }
+
+      .tunnel-list {
+        display: grid;
+        gap: 15px;
+        margin-top: 20px;
+      }
+
+      .tunnel-item {
+        background: #f9fafb;
+        padding: 20px;
+        border-radius: 15px;
+        border: 2px solid #e5e7eb;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: all 0.3s;
+      }
+
+      .tunnel-item:hover {
+        border-color: #667eea;
+        transform: translateX(5px);
+      }
+
+      .tunnel-info {
+        flex: 1;
+      }
+
+      .tunnel-id {
+        font-weight: 600;
+        color: #667eea;
+        font-size: 18px;
+        margin-bottom: 5px;
+      }
+
+      .tunnel-url {
+        color: #6b7280;
+        font-size: 14px;
+        margin-bottom: 8px;
+        word-break: break-all;
+      }
+
+      .tunnel-meta {
+        font-size: 13px;
+        color: #9ca3af;
+      }
+
+      .tunnel-actions {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .qr-code {
+        max-width: 150px;
+        border-radius: 10px;
+      }
+
+      .empty-state {
+        text-align: center;
+        padding: 40px;
+        color: #9ca3af;
+      }
+
+      .empty-state svg {
+        width: 80px;
+        height: 80px;
+        margin-bottom: 20px;
+        opacity: 0.3;
+      }
+
+      .notification {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 15px 20px;
+        border-radius: 10px;
+        color: white;
+        font-weight: 600;
+        animation: slideIn 0.3s;
+        z-index: 1000;
+      }
+
+      .notification.success {
+        background: #10b981;
+      }
+
+      .notification.error {
+        background: #ef4444;
+      }
+
+      @keyframes slideIn {
+        from {
+          transform: translateX(400px);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(0);
+          opacity: 1;
+        }
+      }
+
+      .loading {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 3px solid rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        border-top-color: white;
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @media (max-width: 768px) {
+        header h1 {
+          font-size: 36px;
+        }
+
+        .tunnel-item {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 15px;
+        }
+
+        .tunnel-actions {
+          width: 100%;
+          justify-content: space-between;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>🚇 Custom Tunnel Dashboard</h1>
+        <p>로컬 서버를 전 세계와 공유하세요</p>
+      </header>
+
+      <!-- Fly.io 서버 상태 -->
+      <div class="card">
+        <h2>
+          <span class="status" id="serverStatus"></span>
+          Fly.io 서버
+        </h2>
+        <div class="control-panel">
+          <button
+            class="button button-success"
+            id="startServerBtn"
+            onclick="startServer()"
+          >
+            ▶️ 서버 시작
+          </button>
+          <button
+            class="button button-danger"
+            id="stopServerBtn"
+            onclick="stopServer()"
+          >
+            ⏹️ 서버 중지
+          </button>
+          <span id="serverStatusText" style="color: #6b7280; margin-left: 10px"
+            >확인 중...</span
+          >
+        </div>
+      </div>
+
+      <!-- 터널 시작 -->
+      <div class="card">
+        <h2>🚀 새 터널 시작</h2>
+        <div class="control-panel">
+          <div class="input-group">
+            <label for="portInput" style="font-weight: 600; color: #374151"
+              >포트:</label
+            >
+            <input
+              type="number"
+              id="portInput"
+              placeholder="5173"
+              value="5173"
+              min="1"
+              max="65535"
+            />
+          </div>
+          <button class="button button-primary" onclick="startTunnel()">
+            🚇 터널 시작
+          </button>
+        </div>
+      </div>
+
+      <!-- 활성 터널 목록 -->
+      <div class="card">
+        <h2>📋 활성 터널 (<span id="tunnelCount">0</span>)</h2>
+        <div id="tunnelList" class="tunnel-list">
+          <div class="empty-state">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M13 10V3L4 14h7v7l9-11h-7z"
+              ></path>
+            </svg>
+            <p>실행 중인 터널이 없습니다</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let ws;
+      let tunnels = {};
+      let flyServerStatus = "unknown";
+
+      // WebSocket 연결
+      function connectWebSocket() {
+        ws = new WebSocket(`ws://${window.location.host}`);
+
+        ws.onopen = () => {
+          console.log("✅ WebSocket 연결됨");
+        };
+
+        ws.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          handleWebSocketMessage(data);
+        };
+
+        ws.onclose = () => {
+          console.log("❌ WebSocket 연결 끊김, 재연결 중...");
+          setTimeout(connectWebSocket, 3000);
+        };
+      }
+
+      // WebSocket 메시지 처리
+      function handleWebSocketMessage(data) {
+        switch (data.type) {
+          case "initialState":
+            flyServerStatus = data.flyServer;
+            updateServerStatus();
+            data.tunnels.forEach((tunnel) => {
+              tunnels[tunnel.id] = tunnel;
+            });
+            renderTunnels();
+            break;
+
+          case "flyServerStarted":
+            flyServerStatus = "running";
+            updateServerStatus();
+            showNotification("서버가 시작되었습니다", "success");
+            break;
+
+          case "flyServerStopped":
+            flyServerStatus = "stopped";
+            updateServerStatus();
+            showNotification("서버가 중지되었습니다", "success");
+            break;
+
+          case "flyServerStatusChanged":
+            flyServerStatus = data.status;
+            updateServerStatus();
+            break;
+
+          case "tunnelStarted":
+            tunnels[data.tunnel.id] = data.tunnel;
+            renderTunnels();
+            showNotification("터널이 시작되었습니다", "success");
+            break;
+
+          case "tunnelStopped":
+            delete tunnels[data.tunnelId];
+            renderTunnels();
+            showNotification("터널이 중지되었습니다", "success");
+            break;
+        }
+      }
+
+      // 서버 상태 업데이트
+      function updateServerStatus() {
+        const statusEl = document.getElementById("serverStatus");
+        const textEl = document.getElementById("serverStatusText");
+        const startBtn = document.getElementById("startServerBtn");
+        const stopBtn = document.getElementById("stopServerBtn");
+
+        statusEl.className = `status ${flyServerStatus}`;
+
+        if (flyServerStatus === "running") {
+          textEl.textContent = "🟢 실행 중";
+          textEl.style.color = "#10b981";
+          startBtn.disabled = true;
+          stopBtn.disabled = false;
+        } else if (flyServerStatus === "stopped") {
+          textEl.textContent = "🔴 중지됨";
+          textEl.style.color = "#ef4444";
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+        } else {
+          textEl.textContent = "⚪ 확인 중...";
+          textEl.style.color = "#6b7280";
+          startBtn.disabled = false;
+          stopBtn.disabled = false;
+        }
+      }
+
+      // 서버 시작
+      async function startServer() {
+        const btn = document.getElementById("startServerBtn");
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<span class="loading"></span> 시작 중...';
+        btn.disabled = true;
+
+        try {
+          const response = await fetch("/api/fly/start", { method: "POST" });
+          const data = await response.json();
+
+          if (!data.success) {
+            throw new Error(data.error);
+          }
+        } catch (error) {
+          showNotification("서버 시작 실패: " + error.message, "error");
+          btn.innerHTML = originalText;
+          btn.disabled = false;
+        }
+      }
+
+      // 서버 중지
+      async function stopServer() {
+        const btn = document.getElementById("stopServerBtn");
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<span class="loading"></span> 중지 중...';
+        btn.disabled = true;
+
+        try {
+          const response = await fetch("/api/fly/stop", { method: "POST" });
+          const data = await response.json();
+
+          if (!data.success) {
+            throw new Error(data.error);
+          }
+        } catch (error) {
+          showNotification("서버 중지 실패: " + error.message, "error");
+          btn.innerHTML = originalText;
+          btn.disabled = false;
+        }
+      }
+
+      // 터널 시작
+      async function startTunnel() {
+        const port = document.getElementById("portInput").value;
+
+        if (!port) {
+          showNotification("포트를 입력하세요", "error");
+          return;
+        }
+
+        showNotification("터널 시작 중...", "success");
+
+        try {
+          const response = await fetch("/api/tunnel/start", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ port: parseInt(port) }),
+          });
+
+          const data = await response.json();
+
+          if (!data.success) {
+            throw new Error(data.error);
+          }
+        } catch (error) {
+          showNotification("터널 시작 실패: " + error.message, "error");
+        }
+      }
+
+      // 터널 중지
+      async function stopTunnel(tunnelId) {
+        try {
+          const response = await fetch(`/api/tunnel/stop/${tunnelId}`, {
+            method: "POST",
+          });
+          const data = await response.json();
+
+          if (!data.success) {
+            throw new Error(data.error);
+          }
+        } catch (error) {
+          showNotification("터널 중지 실패: " + error.message, "error");
+        }
+      }
+
+      // 터널 목록 렌더링
+      function renderTunnels() {
+        const tunnelList = document.getElementById("tunnelList");
+        const tunnelCount = document.getElementById("tunnelCount");
+        const tunnelArray = Object.values(tunnels);
+
+        tunnelCount.textContent = tunnelArray.length;
+
+        if (tunnelArray.length === 0) {
+          tunnelList.innerHTML = `
+          <div class="empty-state">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+            </svg>
+            <p>실행 중인 터널이 없습니다</p>
+          </div>
+        `;
+          return;
+        }
+
+        tunnelList.innerHTML = tunnelArray
+          .map(
+            (tunnel) => `
+        <div class="tunnel-item">
+          <div class="tunnel-info">
+            <div class="tunnel-id">🚇 ${tunnel.id}</div>
+            <div class="tunnel-url">${tunnel.url}</div>
+            <div class="tunnel-meta">
+              포트: ${tunnel.port} | 시작: ${new Date(
+              tunnel.startTime
+            ).toLocaleTimeString("ko-KR")}
+            </div>
+          </div>
+          <div class="tunnel-actions">
+            <img id="qr-${tunnel.id}" class="qr-code" style="display:none;">
+            <button class="button button-secondary" onclick="copyUrl('${
+              tunnel.url
+            }')">
+              📋 복사
+            </button>
+            <button class="button button-secondary" onclick="showQR('${
+              tunnel.id
+            }', '${tunnel.url}')">
+              📱 QR
+            </button>
+            <button class="button button-danger" onclick="stopTunnel('${
+              tunnel.id
+            }')">
+              ⏹️ 중지
+            </button>
+          </div>
+        </div>
+      `
+          )
+          .join("");
+      }
+
+      // URL 복사
+      function copyUrl(url) {
+        navigator.clipboard.writeText(url).then(() => {
+          showNotification("URL이 복사되었습니다", "success");
+        });
+      }
+
+      // QR 코드 표시
+      async function showQR(tunnelId, url) {
+        const qrImg = document.getElementById(`qr-${tunnelId}`);
+
+        if (qrImg.style.display === "block") {
+          qrImg.style.display = "none";
+          return;
+        }
+
+        try {
+          const response = await fetch(
+            `/api/qrcode/${encodeURIComponent(url)}`
+          );
+          const data = await response.json();
+
+          if (data.success) {
+            qrImg.src = data.qrCode;
+            qrImg.style.display = "block";
+          }
+        } catch (error) {
+          showNotification("QR 코드 생성 실패", "error");
+        }
+      }
+
+      // 알림 표시
+      function showNotification(message, type = "success") {
+        const notification = document.createElement("div");
+        notification.className = `notification ${type}`;
+        notification.textContent = message;
+        document.body.appendChild(notification);
+
+        setTimeout(() => {
+          notification.remove();
+        }, 3000);
+      }
+
+      // 초기화
+      connectWebSocket();
+
+      // 주기적으로 상태 확인
+      setInterval(async () => {
+        try {
+          const response = await fetch("/api/status");
+          const data = await response.json();
+          flyServerStatus = data.flyServer;
+          updateServerStatus();
+        } catch (error) {
+          console.error("상태 확인 실패:", error);
+        }
+      }, 10000);
+    </script>
+  </body>
+</html>
