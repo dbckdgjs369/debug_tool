@@ -468,7 +468,9 @@
 
       // WebSocket 연결
       function connectWebSocket() {
-        ws = new WebSocket(`ws://${window.location.host}`);
+        // HTTPS에서는 wss://, HTTP에서는 ws:// 사용
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        ws = new WebSocket(`${protocol}//${window.location.host}`);
 
         ws.onopen = () => {
           console.log("✅ WebSocket 연결됨");
@@ -575,8 +577,11 @@
           if (!data.success) {
             throw new Error(data.error);
           }
+
+          // 성공 시 즉시 알림 표시
+          showNotification("✅ 서버 시작 요청이 성공했습니다", "success");
         } catch (error) {
-          showNotification("서버 시작 실패: " + error.message, "error");
+          showNotification("❌ 서버 시작 실패: " + error.message, "error");
           btn.innerHTML = originalText;
           btn.disabled = false;
         }
@@ -596,8 +601,11 @@
           if (!data.success) {
             throw new Error(data.error);
           }
+
+          // 성공 시 즉시 알림 표시
+          showNotification("✅ 서버 중지 요청이 성공했습니다", "success");
         } catch (error) {
-          showNotification("서버 중지 실패: " + error.message, "error");
+          showNotification("❌ 서버 중지 실패: " + error.message, "error");
           btn.innerHTML = originalText;
           btn.disabled = false;
         }

@@ -1,0 +1,79 @@
+{
+  "name": "custom-tunnel",
+  "displayName": "Custom Tunnel",
+  "description": "로컬 서버를 터널로 공유하세요",
+  "version": "1.0.0",
+  "publisher": "your-publisher-name",
+  "icon": "resources/icon.png",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "tunnel-explorer",
+          "title": "Custom Tunnel",
+          "icon": "resources/tunnel-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "tunnel-explorer": [
+        {
+          "type": "webview",
+          "id": "tunnelView",
+          "name": "Tunnel Dashboard"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "tunnel.start",
+        "title": "Start Tunnel",
+        "category": "Tunnel",
+        "icon": "$(play)"
+      },
+      {
+        "command": "tunnel.stop",
+        "title": "Stop Tunnel",
+        "category": "Tunnel",
+        "icon": "$(stop)"
+      },
+      {
+        "command": "tunnel.refresh",
+        "title": "Refresh",
+        "category": "Tunnel",
+        "icon": "$(refresh)"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/node": "16.x",
+    "@types/vscode": "^1.74.0",
+    "@types/ws": "^8.5.0",
+    "@typescript-eslint/eslint-plugin": "^5.0.0",
+    "@typescript-eslint/parser": "^5.0.0",
+    "eslint": "^8.0.0",
+    "typescript": "^4.9.0"
+  },
+  "dependencies": {
+    "axios": "^1.13.2",
+    "ws": "^8.14.2"
+  }
+}

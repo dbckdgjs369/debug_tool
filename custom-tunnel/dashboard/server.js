@@ -7,6 +7,42 @@ const WebSocket = require("ws");
 const app = express();
 const PORT = 3030;
 
+// 기본 인증 미들웨어
+const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD;
+
+if (DASHBOARD_PASSWORD) {
+  app.use((req, res, next) => {
+    // WebSocket 업그레이드 요청은 스킵
+    if (req.headers.upgrade === "websocket") {
+      return next();
+    }
+
+    // 정적 파일은 체크 안함
+    if (!req.path.startsWith("/api") && req.path !== "/") {
+      return next();
+    }
+
+    const auth = req.headers.authorization;
+
+    if (!auth) {
+      res.setHeader("WWW-Authenticate", 'Basic realm="Dashboard"');
+      return res.status(401).send("Authentication required");
+    }
+
+    const [, credentials] = auth.split(" ");
+    const [username, password] = Buffer.from(credentials, "base64")
+      .toString()
+      .split(":");
+
+    if (password !== DASHBOARD_PASSWORD) {
+      return res.status(401).send("Invalid credentials");
+    }
+
+    next();
+  });
+  console.log("🔒 Basic authentication enabled");
+}
+
 app.use(express.json());
 app.use(express.static("public"));
 
@@ -26,10 +62,13 @@ function broadcast(data) {
   });
 }
 
+// flyctl 경로 (Docker 환경 고려)
+const FLYCTL = process.env.FLYCTL_PATH || "flyctl";
+
 // Fly.io 서버 상태 확인
 async function checkFlyStatus() {
   return new Promise((resolve) => {
-    exec("cd ../server && flyctl status --json", (error, stdout) => {
+    exec(`${FLYCTL} status --json -a custom-tunnel`, (error, stdout) => {
       if (error) {
         resolve("stopped");
         return;
@@ -52,7 +91,7 @@ async function checkFlyStatus() {
 function startFlyServer() {
   return new Promise((resolve, reject) => {
     exec(
-      "cd ../server && flyctl machine start 286e236c03d7d8",
+      `${FLYCTL} machine start 286e236c03d7d8 -a custom-tunnel`,
       (error, stdout, stderr) => {
         if (error) {
           reject(error.message);
@@ -68,7 +107,7 @@ function startFlyServer() {
 function stopFlyServer() {
   return new Promise((resolve, reject) => {
     exec(
-      "cd ../server && flyctl machine stop 286e236c03d7d8",
+      `${FLYCTL} machine stop 286e236c03d7d8 -a custom-tunnel`,
       (error, stdout, stderr) => {
         if (error) {
           reject(error.message);
@@ -83,16 +122,16 @@ function stopFlyServer() {
 // 터널 시작
 function startTunnel(port, useHttps = false) {
   return new Promise((resolve, reject) => {
-    const args = ["../client/index.js", port, "wss://custom-tunnel.fly.dev"];
+    // Docker 환경을 고려한 절대 경로
+    const clientPath = path.join(__dirname, "../client/index.js");
+    const args = [clientPath, port, "wss://custom-tunnel.fly.dev"];
 
     // HTTPS 사용 시 네 번째 인자 추가
     if (useHttps) {
       args.push("https");
     }
 
-    const tunnelProcess = spawn("node", args, {
-      cwd: path.join(__dirname),
-    });
+    const tunnelProcess = spawn("node", args);
 
     let tunnelUrl = "";
     let tunnelId = "";
@@ -101,14 +140,22 @@ function startTunnel(port, useHttps = false) {
       const output = data.toString();
       console.log(`Tunnel output: ${output}`);
 
-      // URL 추출
-      const urlMatch = output.match(
-        /https:\/\/custom-tunnel\.fly\.dev\/([a-f0-9]{8})/
-      );
-      if (urlMatch) {
-        tunnelUrl = urlMatch[0];
-        tunnelId = urlMatch[1];
+      // 터널 ID 추출 (더 안정적)
+      const idMatch = output.match(/🔑 터널 ID: ([a-f0-9]{8})/);
+      if (idMatch && !tunnelId) {
+        tunnelId = idMatch[1];
+        console.log(`🔑 터널 ID: ${tunnelId}`);
+      }
 
+      // URL 추출
+      const urlMatch = output.match(/📎 터널 URL: (https:\/\/[^\s]+)/);
+      if (urlMatch && !tunnelUrl) {
+        tunnelUrl = urlMatch[1];
+        console.log(`🎉 터널 생성 완료!`);
+      }
+
+      // 둘 다 추출되면 활성 터널에 추가
+      if (tunnelId && tunnelUrl && !activeTunnels.has(tunnelId)) {
         activeTunnels.set(tunnelId, {
           id: tunnelId,
           port: port,
@@ -118,12 +165,15 @@ function startTunnel(port, useHttps = false) {
           useHttps: useHttps,
         });
 
+        console.log(`이제 터널 URL로 접속하면 로컬 서버로 연결됩니다!`);
+
         broadcast({
           type: "tunnelStarted",
           tunnel: {
             id: tunnelId,
             port: port,
             url: tunnelUrl,
+            startTime: new Date(),
             useHttps: useHttps,
           },
         });
