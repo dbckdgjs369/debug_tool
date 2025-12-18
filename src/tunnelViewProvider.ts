@@ -1,6 +1,5 @@
 import * as vscode from "vscode";
 import { TunnelManager, Tunnel } from "./tunnelManager";
-import { FlyServerManager, FlyServerStatus } from "./flyServerManager";
 
 export class TunnelViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "tunnelView";
@@ -9,8 +8,7 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
-    private readonly tunnelManager: TunnelManager,
-    private readonly flyServerManager: FlyServerManager
+    private readonly tunnelManager: TunnelManager
   ) {
     // 터널 이벤트 리스닝
     this.tunnelManager.on("tunnelStarted", () => {
@@ -20,14 +18,6 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
     this.tunnelManager.on("tunnelStopped", () => {
       this.refresh();
     });
-
-    // Fly 서버 이벤트 리스닝
-    this.flyServerManager.on("statusChanged", () => {
-      this.refresh();
-    });
-
-    // 초기 서버 상태 확인
-    this.flyServerManager.checkStatus();
   }
 
   public resolveWebviewView(
@@ -60,46 +50,8 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
         case "openUrl":
           vscode.env.openExternal(vscode.Uri.parse(data.url));
           break;
-        case "startFlyServer":
-          this.handleStartFlyServer();
-          break;
-        case "stopFlyServer":
-          this.handleStopFlyServer();
-          break;
-        case "refreshFlyServer":
-          this.handleRefreshFlyServer();
-          break;
       }
     });
-  }
-
-  private async handleStartFlyServer() {
-    try {
-      await this.flyServerManager.startServer();
-      vscode.window.showInformationMessage("Fly.io 서버가 시작되었습니다");
-      this.refresh();
-    } catch (error) {
-      vscode.window.showErrorMessage(`서버 시작 실패: ${error}`);
-    }
-  }
-
-  private async handleStopFlyServer() {
-    try {
-      await this.flyServerManager.stopServer();
-      vscode.window.showInformationMessage("Fly.io 서버가 중지되었습니다");
-      this.refresh();
-    } catch (error) {
-      vscode.window.showErrorMessage(`서버 중지 실패: ${error}`);
-    }
-  }
-
-  private async handleRefreshFlyServer() {
-    try {
-      await this.flyServerManager.checkStatus();
-      this.refresh();
-    } catch (error) {
-      vscode.window.showErrorMessage(`상태 확인 실패: ${error}`);
-    }
   }
 
   private async handleStartTunnel(port: number, useHttps: boolean) {
@@ -130,7 +82,6 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
 
   private _getHtmlForWebview(webview: vscode.Webview) {
     const tunnels = this.tunnelManager.getTunnels();
-    const flyServerStatus = this.flyServerManager.getStatus();
 
     return `<!DOCTYPE html>
 <html lang="ko">
@@ -393,51 +344,6 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
     </div>
   </div>
 
-  <div class="section">
-    <h3 style="margin-top: 0; margin-bottom: 10px; font-size: 13px;">🖥️ Fly.io 서버</h3>
-    <div class="quick-start">
-      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span class="status-dot ${
-            flyServerStatus === "running" ? "connected" : "disconnected"
-          }"></span>
-          <span style="font-size: 13px; font-weight: 500;">
-            ${
-              flyServerStatus === "running"
-                ? "🟢 Running"
-                : flyServerStatus === "stopped"
-                ? "🔴 Stopped"
-                : "⚪ Unknown"
-            }
-          </span>
-        </div>
-        <button class="btn-secondary" onclick="refreshFlyServer()" style="width: auto; padding: 4px 10px; font-size: 11px;">🔄</button>
-      </div>
-      <div style="display: flex; gap: 8px;">
-        <button 
-          class="btn-secondary" 
-          onclick="startFlyServer()" 
-          ${
-            flyServerStatus === "running"
-              ? 'disabled style="opacity: 0.5; cursor: not-allowed;"'
-              : ""
-          }>
-          ▶️ 시작
-        </button>
-        <button 
-          class="btn-danger" 
-          onclick="stopFlyServer()"
-          ${
-            flyServerStatus === "stopped"
-              ? 'disabled style="opacity: 0.5; cursor: not-allowed;"'
-              : ""
-          }>
-          ⏹️ 중지
-        </button>
-      </div>
-    </div>
-  </div>
-
   <script>
     const vscode = acquireVsCodeApi();
 
@@ -478,24 +384,6 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
       vscode.postMessage({
         type: 'openUrl',
         url: url
-      });
-    }
-
-    function startFlyServer() {
-      vscode.postMessage({
-        type: 'startFlyServer'
-      });
-    }
-
-    function stopFlyServer() {
-      vscode.postMessage({
-        type: 'stopFlyServer'
-      });
-    }
-
-    function refreshFlyServer() {
-      vscode.postMessage({
-        type: 'refreshFlyServer'
       });
     }
 

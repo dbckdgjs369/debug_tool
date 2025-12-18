@@ -26,7 +26,7 @@ export class TunnelManager extends EventEmitter {
       const args = [
         this.clientPath,
         port.toString(),
-        "wss://custom-tunnel.fly.dev",
+        "wss://debug-tool.onrender.com",
       ];
 
       if (useHttps) {

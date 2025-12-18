@@ -1,10 +1,8 @@
 import * as vscode from "vscode";
 import { TunnelViewProvider } from "./tunnelViewProvider";
 import { TunnelManager } from "./tunnelManager";
-import { FlyServerManager } from "./flyServerManager";
 
 let tunnelManager: TunnelManager;
-let flyServerManager: FlyServerManager;
 
 export function activate(context: vscode.ExtensionContext) {
   console.log("Custom Tunnel extension is now active!");
@@ -12,15 +10,8 @@ export function activate(context: vscode.ExtensionContext) {
   // 터널 매니저 초기화
   tunnelManager = new TunnelManager();
 
-  // Fly 서버 매니저 초기화
-  flyServerManager = new FlyServerManager();
-
   // Webview Provider 등록
-  const provider = new TunnelViewProvider(
-    context.extensionUri,
-    tunnelManager,
-    flyServerManager
-  );
+  const provider = new TunnelViewProvider(context.extensionUri, tunnelManager);
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
