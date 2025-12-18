@@ -46,6 +46,50 @@
         padding: 30px;
         margin-bottom: 20px;
         box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+        position: relative;
+      }
+
+      .refresh-btn {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        background: #667eea;
+        border: none;
+        color: white;
+        border-radius: 8px;
+        padding: 10px 16px;
+        cursor: pointer;
+        transition: all 0.3s;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .refresh-btn:hover {
+        background: #5568d3;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+      }
+
+      .refresh-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .refresh-icon {
+        display: inline-block;
+        transition: transform 0.3s;
+      }
+
+      .refresh-btn:hover .refresh-icon {
+        transform: rotate(180deg);
+      }
+
+      .refresh-icon.spinning {
+        animation: spin 1s linear infinite;
       }
 
       .card h2 {
@@ -149,11 +193,18 @@
         border-radius: 10px;
         font-size: 16px;
         width: 120px;
+        -moz-appearance: textfield; /* Firefox */
       }
 
       input[type="number"]:focus {
         outline: none;
         border-color: #667eea;
+      }
+
+      input[type="number"]::-webkit-inner-spin-button,
+      input[type="number"]::-webkit-outer-spin-button {
+        -webkit-appearance: none; /* Chrome, Safari, Edge */
+        margin: 0;
       }
 
       .tunnel-list {
@@ -299,6 +350,31 @@
 
       <!-- Fly.io 서버 상태 -->
       <div class="card">
+        <button
+          class="refresh-btn"
+          id="refreshBtn"
+          onclick="refreshServerStatus()"
+        >
+          <span class="refresh-icon" id="refreshIcon">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path
+                d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"
+              ></path>
+            </svg>
+          </span>
+          새로고침
+        </button>
         <h2>
           <span class="status" id="serverStatus"></span>
           Fly.io 서버
@@ -335,8 +411,7 @@
             <input
               type="number"
               id="portInput"
-              placeholder="5173"
-              value="5173"
+              placeholder="포트 번호"
               min="1"
               max="65535"
             />
@@ -465,17 +540,23 @@
         if (flyServerStatus === "running") {
           textEl.textContent = "🟢 실행 중";
           textEl.style.color = "#10b981";
+          startBtn.innerHTML = "▶️ 서버 시작";
           startBtn.disabled = true;
+          stopBtn.innerHTML = "⏹️ 서버 중지";
           stopBtn.disabled = false;
         } else if (flyServerStatus === "stopped") {
           textEl.textContent = "🔴 중지됨";
           textEl.style.color = "#ef4444";
+          startBtn.innerHTML = "▶️ 서버 시작";
           startBtn.disabled = false;
+          stopBtn.innerHTML = "⏹️ 서버 중지";
           stopBtn.disabled = true;
         } else {
           textEl.textContent = "⚪ 확인 중...";
           textEl.style.color = "#6b7280";
+          startBtn.innerHTML = "▶️ 서버 시작";
           startBtn.disabled = false;
+          stopBtn.innerHTML = "⏹️ 서버 중지";
           stopBtn.disabled = false;
         }
       }
@@ -668,6 +749,31 @@
         setTimeout(() => {
           notification.remove();
         }, 3000);
+      }
+
+      // 서버 상태 수동 새로고침
+      async function refreshServerStatus() {
+        const btn = document.getElementById("refreshBtn");
+        const icon = document.getElementById("refreshIcon");
+
+        btn.disabled = true;
+        icon.classList.add("spinning");
+
+        try {
+          const response = await fetch("/api/status");
+          const data = await response.json();
+          flyServerStatus = data.flyServer;
+          updateServerStatus();
+          showNotification("서버 상태가 업데이트되었습니다", "success");
+        } catch (error) {
+          showNotification("상태 확인 실패: " + error.message, "error");
+          console.error("상태 확인 실패:", error);
+        } finally {
+          setTimeout(() => {
+            icon.classList.remove("spinning");
+            btn.disabled = false;
+          }, 500);
+        }
       }
 
       // 초기화
