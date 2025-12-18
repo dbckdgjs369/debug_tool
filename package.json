@@ -3,8 +3,7 @@
   "displayName": "Custom Tunnel",
   "description": "로컬 서버를 터널로 공유하세요",
   "version": "1.0.0",
-  "publisher": "your-publisher-name",
-  "icon": "resources/icon.png",
+  "publisher": "dbckdgjs369",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -21,7 +20,7 @@
         {
           "id": "tunnel-explorer",
           "title": "Custom Tunnel",
-          "icon": "resources/tunnel-icon.svg"
+          "icon": "$(globe)"
         }
       ]
     },
