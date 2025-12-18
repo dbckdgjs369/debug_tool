@@ -81,21 +81,45 @@ ws.on("message", async (message) => {
           },
         });
 
-        // 응답 데이터를 문자열로 변환 (arraybuffer를 Buffer로 처리)
+        // Content-Type에 따라 응답 데이터 처리
+        const contentType = response.headers["content-type"] || "";
+        const isBinary =
+          contentType.includes("image/") ||
+          contentType.includes("video/") ||
+          contentType.includes("audio/") ||
+          contentType.includes("application/pdf") ||
+          contentType.includes("application/zip") ||
+          contentType.includes("application/octet-stream") ||
+          contentType.includes("font/");
+
         let responseBody;
-        if (Buffer.isBuffer(response.data)) {
-          // Buffer를 문자열로 변환
-          responseBody = response.data.toString("utf8");
-        } else if (response.data instanceof ArrayBuffer) {
-          // ArrayBuffer를 Buffer로 변환 후 문자열로
-          responseBody = Buffer.from(response.data).toString("utf8");
-        } else if (typeof response.data === "string") {
-          responseBody = response.data;
-        } else if (response.data === null || response.data === undefined) {
-          responseBody = "";
+        let isBase64 = false;
+
+        if (isBinary) {
+          // 바이너리 데이터는 Base64로 인코딩
+          if (Buffer.isBuffer(response.data)) {
+            responseBody = response.data.toString("base64");
+            isBase64 = true;
+          } else if (response.data instanceof ArrayBuffer) {
+            responseBody = Buffer.from(response.data).toString("base64");
+            isBase64 = true;
+          } else {
+            responseBody = "";
+          }
         } else {
-          // 객체는 JSON으로
-          responseBody = JSON.stringify(response.data);
+          // 텍스트 데이터는 UTF-8 문자열로
+          if (Buffer.isBuffer(response.data)) {
+            responseBody = response.data.toString("utf8");
+          } else if (response.data instanceof ArrayBuffer) {
+            responseBody = Buffer.from(response.data).toString("utf8");
+          } else if (typeof response.data === "string") {
+            responseBody = response.data;
+          } else if (response.data === null || response.data === undefined) {
+            responseBody = "";
+          } else {
+            // 객체는 JSON으로
+            responseBody = JSON.stringify(response.data);
+          }
         }
 
         // 응답 헤더 정리 (프록시 문제 방지)
@@ -199,10 +223,15 @@ ws.on("message", async (message) => {
             statusCode: response.status,
             headers: cleanResponseHeaders,
             body: responseBody,
+            isBase64: isBase64, // Base64 인코딩 여부 플래그
           })
         );
 
-        console.log(`📤 응답 전송: ${response.status} ${method} ${url}`);
+        console.log(
+          `📤 응답 전송: ${response.status} ${method} ${url}${
+            isBase64 ? " (Base64)" : ""
+          }`
+        );
       } catch (error) {
         console.error(`❌ 로컬 서버 요청 실패:`, error.message);
 

@@ -61,15 +61,25 @@ wss.on("connection", (ws, req) => {
       const data = JSON.parse(message);
 
       if (data.type === "response") {
-        const { requestId, statusCode, headers, body } = data;
+        const { requestId, statusCode, headers, body, isBase64 } = data;
 
         // 대기 중인 요청에 응답 전송
         const pendingReq = pendingRequests.get(requestId);
         if (pendingReq) {
           pendingReq.res.writeHead(statusCode, headers);
-          pendingReq.res.end(body);
+
+          // Base64로 인코딩된 바이너리 데이터는 디코딩하여 전송
+          if (isBase64) {
+            const binaryData = Buffer.from(body, "base64");
+            pendingReq.res.end(binaryData);
+            console.log(`📤 응답 전송 (바이너리): ${requestId}`);
+          } else {
+            // 텍스트 데이터는 그대로 전송
+            pendingReq.res.end(body);
+            console.log(`📤 응답 전송: ${requestId}`);
+          }
+
           pendingRequests.delete(requestId);
-          console.log(`📤 응답 전송: ${requestId}`);
         }
       }
     } catch (error) {

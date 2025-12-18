@@ -81,15 +81,18 @@ function stopFlyServer() {
 }
 
 // 터널 시작
-function startTunnel(port) {
+function startTunnel(port, useHttps = false) {
   return new Promise((resolve, reject) => {
-    const tunnelProcess = spawn(
-      "node",
-      ["../client/index.js", port, "wss://custom-tunnel.fly.dev"],
-      {
-        cwd: path.join(__dirname),
-      }
-    );
+    const args = ["../client/index.js", port, "wss://custom-tunnel.fly.dev"];
+
+    // HTTPS 사용 시 네 번째 인자 추가
+    if (useHttps) {
+      args.push("https");
+    }
+
+    const tunnelProcess = spawn("node", args, {
+      cwd: path.join(__dirname),
+    });
 
     let tunnelUrl = "";
     let tunnelId = "";
@@ -112,6 +115,7 @@ function startTunnel(port) {
           url: tunnelUrl,
           process: tunnelProcess,
           startTime: new Date(),
+          useHttps: useHttps,
         });
 
         broadcast({
@@ -120,6 +124,7 @@ function startTunnel(port) {
             id: tunnelId,
             port: port,
             url: tunnelUrl,
+            useHttps: useHttps,
           },
         });
 
@@ -179,6 +184,7 @@ app.get("/api/status", async (req, res) => {
       port: t.port,
       url: t.url,
       startTime: t.startTime,
+      useHttps: t.useHttps,
     })),
   });
 });
@@ -209,14 +215,14 @@ app.post("/api/fly/stop", async (req, res) => {
 
 // 터널 시작
 app.post("/api/tunnel/start", async (req, res) => {
-  const { port } = req.body;
+  const { port, useHttps } = req.body;
 
   if (!port) {
     return res.status(400).json({ success: false, error: "Port is required" });
   }
 
   try {
-    const result = await startTunnel(port);
+    const result = await startTunnel(port, useHttps || false);
     res.json({ success: true, ...result });
   } catch (error) {
     res.status(500).json({ success: false, error });
@@ -274,6 +280,7 @@ wss.on("connection", (ws) => {
           port: t.port,
           url: t.url,
           startTime: t.startTime,
+          useHttps: t.useHttps,
         })),
       })
     );

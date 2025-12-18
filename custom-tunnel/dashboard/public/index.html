@@ -341,6 +341,26 @@
               max="65535"
             />
           </div>
+          <div class="input-group">
+            <label
+              for="httpsToggle"
+              style="
+                font-weight: 600;
+                color: #374151;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                cursor: pointer;
+              "
+            >
+              <input
+                type="checkbox"
+                id="httpsToggle"
+                style="width: 20px; height: 20px; cursor: pointer"
+              />
+              HTTPS 사용
+            </label>
+          </div>
           <button class="button button-primary" onclick="startTunnel()">
             🚇 터널 시작
           </button>
@@ -505,6 +525,7 @@
       // 터널 시작
       async function startTunnel() {
         const port = document.getElementById("portInput").value;
+        const useHttps = document.getElementById("httpsToggle").checked;
 
         if (!port) {
           showNotification("포트를 입력하세요", "error");
@@ -517,7 +538,10 @@
           const response = await fetch("/api/tunnel/start", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ port: parseInt(port) }),
+            body: JSON.stringify({
+              port: parseInt(port),
+              useHttps: useHttps,
+            }),
           });
 
           const data = await response.json();
@@ -574,9 +598,9 @@
             <div class="tunnel-id">🚇 ${tunnel.id}</div>
             <div class="tunnel-url">${tunnel.url}</div>
             <div class="tunnel-meta">
-              포트: ${tunnel.port} | 시작: ${new Date(
-              tunnel.startTime
-            ).toLocaleTimeString("ko-KR")}
+              포트: ${tunnel.port} | 프로토콜: ${
+              tunnel.useHttps ? "HTTPS 🔒" : "HTTP"
+            } | 시작: ${new Date(tunnel.startTime).toLocaleTimeString("ko-KR")}
             </div>
           </div>
           <div class="tunnel-actions">
