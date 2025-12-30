@@ -434,6 +434,71 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
     .status-dot.pulsing {
       animation: pulse 1.5s ease-in-out infinite;
     }
+
+    /* QR 코드 모달 */
+    .qr-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .qr-modal.active {
+      display: flex;
+    }
+
+    .qr-modal-content {
+      background: var(--vscode-editor-background);
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 8px;
+      padding: 20px;
+      max-width: 320px;
+      width: 90%;
+      text-align: center;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    .qr-modal-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 15px;
+      color: var(--vscode-foreground);
+    }
+
+    .qr-code-container {
+      background: white;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 15px 0;
+      display: inline-block;
+    }
+
+    .qr-url {
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground);
+      word-break: break-all;
+      margin-bottom: 15px;
+    }
+
+    .qr-close-btn {
+      background: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+      border: none;
+      padding: 8px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .qr-close-btn:hover {
+      background: var(--vscode-button-hoverBackground);
+    }
   </style>
 </head>
 <body>
@@ -498,6 +563,9 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
             시작: ${new Date(tunnel.startTime).toLocaleTimeString("ko-KR")}
           </div>
           <div class="tunnel-actions">
+            <button class="btn-secondary" onclick="showQRCode('${
+              tunnel.url
+            }')">📱 QR</button>
             <button class="btn-secondary" onclick="copyUrl('${
               tunnel.url
             }')">📋 복사</button>
@@ -516,6 +584,19 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
     </div>
   </div>
 
+  <!-- QR 코드 모달 -->
+  <div id="qrModal" class="qr-modal" onclick="closeQRModal(event)">
+    <div class="qr-modal-content" onclick="event.stopPropagation()">
+      <div class="qr-modal-title">📱 모바일로 접속하기</div>
+      <div class="qr-code-container">
+        <canvas id="qrCanvas"></canvas>
+      </div>
+      <div id="qrUrl" class="qr-url"></div>
+      <button class="qr-close-btn" onclick="closeQRModal()">닫기</button>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script>
     const vscode = acquireVsCodeApi();
 
@@ -628,6 +709,50 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
     document.getElementById('portInput').addEventListener('keypress', (e) => {
       if (e.key === 'Enter') {
         startTunnel();
+      }
+    });
+
+    // QR 코드 표시
+    function showQRCode(url) {
+      const modal = document.getElementById('qrModal');
+      const qrContainer = document.querySelector('.qr-code-container');
+      const qrUrl = document.getElementById('qrUrl');
+      
+      // URL 표시
+      qrUrl.textContent = url;
+      
+      // 기존 QR 코드 제거
+      qrContainer.innerHTML = '';
+      
+      // QR 코드 이미지 생성 (Google Charts API 사용)
+      const qrSize = 200;
+      const qrImg = document.createElement('img');
+      qrImg.src = \`https://api.qrserver.com/v1/create-qr-code/?size=\${qrSize}x\${qrSize}&data=\${encodeURIComponent(url)}\`;
+      qrImg.alt = 'QR Code';
+      qrImg.style.width = qrSize + 'px';
+      qrImg.style.height = qrSize + 'px';
+      qrImg.style.display = 'block';
+      
+      qrContainer.appendChild(qrImg);
+      
+      // 모달 표시
+      modal.classList.add('active');
+    }
+    
+    // QR 코드 모달 닫기
+    function closeQRModal(event) {
+      const modal = document.getElementById('qrModal');
+      
+      // 이벤트가 있고 모달 배경을 클릭한 경우나 버튼을 클릭한 경우
+      if (!event || event.target === modal || event.type === 'click') {
+        modal.classList.remove('active');
+      }
+    }
+    
+    // ESC 키로 모달 닫기
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeQRModal();
       }
     });
 
