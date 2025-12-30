@@ -10,6 +10,20 @@ const cookieParser = require("cookie-parser");
 const app = express();
 app.use(cookieParser());
 
+// CORS 설정 (모든 출처 허용)
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+  // Preflight 요청 처리
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+
+  next();
+});
+
 // HTTPS 지원 (자체 서명 인증서)
 const USE_HTTPS = process.env.USE_HTTPS === "true";
 let server;
@@ -94,6 +108,25 @@ wss.on("connection", (ws, req) => {
 
   ws.on("error", (error) => {
     console.error(`❌ WebSocket 오류 (${tunnelId}):`, error);
+  });
+});
+
+// Health Check 엔드포인트 (서버 상태 확인용)
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    activeTunnels: tunnels.size,
+    pendingRequests: pendingRequests.size,
+  });
+});
+
+// Wake 엔드포인트 (서버 깨우기용)
+app.get("/wake", (req, res) => {
+  res.json({
+    status: "awake",
+    message: "Server is now awake",
+    timestamp: new Date().toISOString(),
   });
 });
 
