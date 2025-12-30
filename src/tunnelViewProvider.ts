@@ -386,8 +386,53 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
     }
 
     .btn-icon {
-      padding: 4px 8px;
+      padding: 6px 10px;
       min-width: auto;
+      background: var(--vscode-button-secondaryBackground);
+      color: var(--vscode-button-secondaryForeground);
+      border-radius: 50%;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+      font-size: 14px;
+    }
+
+    .btn-icon:hover {
+      background: var(--vscode-button-secondaryHoverBackground);
+      transform: scale(1.1);
+    }
+
+    .btn-icon:active {
+      transform: scale(0.95);
+    }
+
+    .btn-icon.spinning {
+      animation: spin 0.6s linear;
+    }
+
+    @keyframes spin {
+      from {
+        transform: rotate(0deg);
+      }
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.5;
+      }
+    }
+
+    .status-dot.pulsing {
+      animation: pulse 1.5s ease-in-out infinite;
     }
   </style>
 </head>
@@ -519,10 +564,20 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
       const statusInfo = document.getElementById('serverStatusInfo');
       const statusDot = document.getElementById('serverStatusDot');
       const wakeBtn = document.getElementById('wakeServerBtn');
+      const refreshBtn = event?.target;
 
       statusInfo.textContent = '상태 확인 중...';
       statusInfo.className = 'server-status-info status-loading';
-      statusDot.className = 'status-dot';
+      statusDot.className = 'status-dot pulsing';
+      
+      // 새로고침 버튼 회전 애니메이션
+      if (refreshBtn) {
+        refreshBtn.classList.add('spinning');
+        // 애니메이션 종료 후 클래스 제거
+        setTimeout(() => {
+          refreshBtn.classList.remove('spinning');
+        }, 600);
+      }
       
       vscode.postMessage({
         type: 'checkServerStatus'
