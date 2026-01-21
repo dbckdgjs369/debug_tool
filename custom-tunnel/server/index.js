@@ -47,6 +47,41 @@ const pendingRequests = new Map();
 
 console.log("🚀 Custom Tunnel Server Starting...");
 
+// JSON body parser 미들웨어 추가
+app.use(express.json());
+
+// 로그 수신 엔드포인트
+app.post("/log", (req, res) => {
+  const { tunnelId, level, message } = req.body;
+
+  console.log(`📝 로그 수신: [${tunnelId}] ${level}: ${message}`);
+
+  // 해당 터널의 WebSocket 연결 찾기
+  const ws = tunnels.get(tunnelId);
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    // 클라이언트(VS Code)에게 로그 전송
+    try {
+      ws.send(
+        JSON.stringify({
+          type: "log",
+          level: level,
+          message: message,
+          timestamp: new Date().toISOString(),
+        }),
+      );
+      console.log(`✅ 로그 전달: ${tunnelId}`);
+      res.json({ success: true });
+    } catch (error) {
+      console.error(`❌ 로그 전달 실패: ${tunnelId}`, error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  } else {
+    console.warn(`⚠️  터널을 찾을 수 없음: ${tunnelId}`);
+    res.status(404).json({ success: false, error: "Tunnel not found" });
+  }
+});
+
 // WebSocket 연결 처리 (터널 클라이언트가 연결)
 wss.on("connection", (ws, req) => {
   const tunnelId = uuidv4().substring(0, 8);
@@ -111,7 +146,7 @@ wss.on("connection", (ws, req) => {
   });
 });
 
-// HTTP 요청 처리 (모든 요청)
+// HTTP 요청 처리 (터널 프록시 - /log는 위에서 이미 처리됨)
 app.all("*", (req, res) => {
   // 기본 페이지는 쿠키가 없을 때만 표시
   if (req.path === "/" && !req.cookies.tunnelId) {

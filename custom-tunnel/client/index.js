@@ -10,7 +10,7 @@ const useHttps = process.argv[4] === "https" || process.argv[4] === "true";
 
 console.log(`🔌 터널 클라이언트 시작...`);
 console.log(
-  `📍 로컬 서버: ${useHttps ? "https" : "http"}://localhost:${localPort}`
+  `📍 로컬 서버: ${useHttps ? "https" : "http"}://localhost:${localPort}`,
 );
 console.log(`🌐 터널 서버: ${tunnelServerUrl}`);
 
@@ -30,6 +30,12 @@ ws.on("message", async (message) => {
       console.log(`📎 터널 URL: ${data.url}`);
       console.log(`🔑 터널 ID: ${data.tunnelId}`);
       console.log("\n이제 터널 URL로 접속하면 로컬 서버로 연결됩니다!\n");
+    } else if (data.type === "log") {
+      // 원격 콘솔 로그 수신
+      const { level, message, timestamp } = data;
+      console.log(
+        `🔍 [REMOTE_LOG] ${JSON.stringify({ level, message, timestamp })}`,
+      );
     } else if (data.type === "request") {
       const { requestId, method, url, headers, body } = data;
 
@@ -140,7 +146,7 @@ ws.on("message", async (message) => {
         if (cleanResponseHeaders["location"]) {
           const localhostPattern = new RegExp(
             `https://localhost:${localPort}`,
-            "gi"
+            "gi",
           );
           cleanResponseHeaders["location"] = cleanResponseHeaders["location"]
             .replace(localhostPattern, `http://localhost:8080`)
@@ -151,13 +157,13 @@ ws.on("message", async (message) => {
         // 주의: import 경로나 상대 경로는 변경하지 않음
         const localhostPattern = new RegExp(
           `https://localhost:${localPort}`,
-          "gi"
+          "gi",
         );
         // HTML에서만 URL 변환 (JS 모듈이나 JSON은 그대로)
         if (cleanResponseHeaders["content-type"]?.includes("text/html")) {
           responseBody = responseBody.replace(
             localhostPattern,
-            "http://localhost:8080"
+            "http://localhost:8080",
           );
         }
 
@@ -224,13 +230,13 @@ ws.on("message", async (message) => {
             headers: cleanResponseHeaders,
             body: responseBody,
             isBase64: isBase64, // Base64 인코딩 여부 플래그
-          })
+          }),
         );
 
         console.log(
           `📤 응답 전송: ${response.status} ${method} ${url}${
             isBase64 ? " (Base64)" : ""
-          }`
+          }`,
         );
       } catch (error) {
         console.error(`❌ 로컬 서버 요청 실패:`, error.message);
@@ -243,7 +249,7 @@ ws.on("message", async (message) => {
             statusCode: 502,
             headers: { "content-type": "text/plain" },
             body: `Bad Gateway: ${error.message}`,
-          })
+          }),
         );
       }
     }
@@ -262,7 +268,7 @@ ws.on("error", (error) => {
   if (error.code === "ECONNREFUSED") {
     console.error("\n⚠️  터널 서버가 실행되고 있지 않습니다!");
     console.error(
-      "먼저 server 디렉토리에서 'npm start'로 서버를 실행하세요.\n"
+      "먼저 server 디렉토리에서 'npm start'로 서버를 실행하세요.\n",
     );
   }
   process.exit(1);

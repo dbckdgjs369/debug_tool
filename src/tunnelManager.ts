@@ -68,6 +68,23 @@ export class TunnelManager extends EventEmitter {
           tunnelUrl = urlMatch[1];
         }
 
+        // 원격 로그 파싱
+        const remoteLogMatch = output.match(/🔍 \[REMOTE_LOG\] (.+)/);
+        if (remoteLogMatch && tunnelId) {
+          try {
+            const logData = JSON.parse(remoteLogMatch[1]);
+            const consoleLog: ConsoleLog = {
+              timestamp: new Date(logData.timestamp),
+              level: logData.level,
+              message: logData.message,
+              source: "remote",
+            };
+            this.addLog(tunnelId, consoleLog);
+          } catch (error) {
+            console.error("Failed to parse remote log:", error);
+          }
+        }
+
         // 둘 다 추출되면 터널 등록
         if (tunnelId && tunnelUrl && !resolved) {
           const tunnel: Tunnel = {
