@@ -167,12 +167,15 @@ ws.on("message", async (message) => {
           );
         }
 
-        // HTML 응답의 경우 React Router 자동 패치 스크립트 추가
+        // HTML 응답의 경우 React Router 자동 패치 스크립트 + 콘솔 캡처 스크립트 추가
         if (
           response.status === 200 &&
           cleanResponseHeaders["content-type"]?.includes("text/html") &&
           url === "/"
         ) {
+          // 터널 ID 가져오기
+          const tunnelIdFromClient = tunnelId || "unknown";
+
           // </head> 태그 직전에 스크립트 추가
           const script = `
 <script>
@@ -181,12 +184,14 @@ ws.on("message", async (message) => {
     var originalPushState = history.pushState;
     var originalReplaceState = history.replaceState;
     var tunnelBasename = '';
+    var detectedTunnelId = '';
     
     // 터널 ID 감지
     var tunnelMatch = window.location.pathname.match(/^\\/([a-f0-9]{8})(\\/?.*)?$/);
     if (tunnelMatch) {
       tunnelBasename = '/' + tunnelMatch[1];
-      console.log('[Tunnel] 감지됨:', tunnelBasename);
+      detectedTunnelId = tunnelMatch[1];
+      console.log('[Tunnel] 감지됨:', tunnelBasename, 'ID:', detectedTunnelId);
       
       // 실제 앱 경로 추출
       var appPath = tunnelMatch[2] || '/';
@@ -213,6 +218,53 @@ ws.on("message", async (message) => {
       }
       return originalReplaceState.apply(history, [state, title, url]);
     };
+    
+    // 원격 콘솔 캡처 (자동으로 터널 ID 사용)
+    if (detectedTunnelId) {
+      var originalLog = console.log;
+      var originalWarn = console.warn;
+      var originalError = console.error;
+      var originalInfo = console.info;
+      
+      function sendLog(level, args) {
+        var message = Array.from(args).map(function(arg) {
+          if (typeof arg === 'object') {
+            try { return JSON.stringify(arg); }
+            catch { return String(arg); }
+          }
+          return String(arg);
+        }).join(' ');
+        
+        fetch('https://debug-tool.onrender.com/log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            tunnelId: detectedTunnelId, 
+            level: level, 
+            message: message 
+          })
+        }).catch(function() {});
+      }
+      
+      console.log = function() {
+        originalLog.apply(console, arguments);
+        sendLog('log', arguments);
+      };
+      console.warn = function() {
+        originalWarn.apply(console, arguments);
+        sendLog('warn', arguments);
+      };
+      console.error = function() {
+        originalError.apply(console, arguments);
+        sendLog('error', arguments);
+      };
+      console.info = function() {
+        originalInfo.apply(console, arguments);
+        sendLog('info', arguments);
+      };
+      
+      console.log('[Tunnel] 원격 콘솔 활성화됨 - ID:', detectedTunnelId);
+    }
     
     // 쿠키 확인 (이미 터널 ID가 저장되어 있음)
     console.log('[Tunnel] 준비 완료 - React 앱 로드 중...');
