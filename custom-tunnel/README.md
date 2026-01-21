@@ -8,17 +8,17 @@
 - 🔒 **HTTPS 지원**: 자체 서명 인증서 자동 허용
 - 🖼️ **바이너리 파일 지원**: 이미지, 폰트, 비디오 등 완벽 지원
 - ⚛️ **React Router 지원**: SPA 자동 라우팅 패치
-- 🎨 **웹 대시보드**: 터널 관리 UI 제공
-- ☁️ **Fly.io 배포**: 프로덕션 서버 운영 중
+- 💻 **VSCode 확장**: 사이드바에서 터널 관리
+- ☁️ **Render 배포**: 프로덕션 서버 운영 중
 
 ## 🏗️ 시스템 구조
 
 ```
 [로컬 서버]  ←→  [터널 클라이언트]
-  :3000            (WebSocket)
+  :3000          (WebSocket)
                       ↕
-              [Fly.io 터널 서버]
-               custom-tunnel.fly.dev
+           [Render 터널 서버]
+          debug-tool.onrender.com
                       ↕
                 [외부 사용자]
 ```
@@ -27,52 +27,39 @@
 
 ```
 custom-tunnel/
-├── server/              # Fly.io 배포 서버
+├── server/              # Render 배포 서버
 │   ├── index.js         # 터널 서버 (WebSocket + HTTP)
 │   ├── Dockerfile       # Docker 이미지
-│   └── fly.toml         # Fly.io 설정
+│   └── render.yaml      # Render 설정
 ├── client/              # 로컬 터널 클라이언트
 │   └── index.js         # 로컬 서버 연결
-├── dashboard/           # 관리 대시보드
-│   ├── server.js        # 대시보드 서버
-│   └── public/          # 웹 UI
 ├── README.md
-└── QUICK_START.md       # 빠른 시작 가이드
+├── QUICK_START.md       # 빠른 시작 가이드
+└── RENDER_DEPLOY.md     # Render 배포 가이드
 ```
 
 ## 🚀 빠른 시작
 
-### 방법 1: 대시보드 사용 (권장)
+### 방법 1: VSCode 확장 프로그램 사용 (권장)
 
-**1. 의존성 설치**
-
-```bash
-cd custom-tunnel/dashboard
-npm install
-```
-
-**2. 대시보드 실행**
+**1. VSCode 확장 설치**
 
 ```bash
-npm start
+# VSIX 파일로 설치
+code --install-extension custom-tunnel-1.0.0.vsix
 ```
 
-**3. 브라우저에서 접속**
+**2. VSCode에서 확장 사용**
 
-```
-http://localhost:3030
-```
-
-**4. 터널 시작**
-
+- Activity Bar에서 "Custom Tunnel" 아이콘 클릭
 - 포트 번호 입력 (예: 3000)
 - HTTPS 사용 여부 선택
 - "🚇 터널 시작" 버튼 클릭
 
-**5. 생성된 URL로 접속**
+**3. 생성된 URL로 접속**
 
 ```
-https://custom-tunnel.fly.dev/abc12345
+https://debug-tool.onrender.com/abc12345
 ```
 
 ### 방법 2: CLI 사용
@@ -98,13 +85,13 @@ npm start  # http://localhost:3000
 npm start 3000
 
 # HTTPS 서버
-npm start 3001 wss://custom-tunnel.fly.dev https
+npm start 3001 wss://debug-tool.onrender.com https
 ```
 
 **4. 터널 URL 사용**
 
 ```
-출력된 URL로 접속: https://custom-tunnel.fly.dev/[터널ID]
+출력된 URL로 접속: https://debug-tool.onrender.com/[터널ID]
 ```
 
 ## 💡 사용 예시
@@ -115,12 +102,11 @@ npm start 3001 wss://custom-tunnel.fly.dev https
 # 1. 개발 서버 실행
 npm run dev  # localhost:3000
 
-# 2. 터널 시작 (새 터미널)
-cd custom-tunnel/client
-npm start 3000
+# 2. VSCode 확장에서 터널 시작
+포트: 3000 입력 → "🚇 터널 시작"
 
 # 3. 모바일이나 다른 기기에서 접속
-https://custom-tunnel.fly.dev/abc12345
+https://debug-tool.onrender.com/abc12345
 ```
 
 ### HTTPS 로컬 서버 공유
@@ -128,18 +114,7 @@ https://custom-tunnel.fly.dev/abc12345
 ```bash
 # HTTPS 서버가 localhost:3001에서 실행 중일 때
 cd custom-tunnel/client
-npm start 3001 wss://custom-tunnel.fly.dev https
-```
-
-### 대시보드로 여러 터널 관리
-
-```bash
-# 대시보드 실행
-cd custom-tunnel/dashboard
-npm start
-
-# 브라우저에서 여러 터널을 동시에 관리
-http://localhost:3030
+npm start 3001 wss://debug-tool.onrender.com https
 ```
 
 ## 🎯 주요 기능 상세
@@ -165,7 +140,7 @@ http://localhost:3030
 **SPA 라우팅 문제 해결:**
 
 ```javascript
-// 터널 URL: https://custom-tunnel.fly.dev/abc12345/about
+// 터널 URL: https://debug-tool.onrender.com/abc12345/about
 // React Router가 /about 경로를 정상 인식
 ```
 
@@ -184,39 +159,56 @@ http://localhost:3030
 npm run dev -- --experimental-https
 
 # 터널 연결 (인증서 오류 없음)
-npm start 3000 wss://custom-tunnel.fly.dev https
+npm start 3000 wss://debug-tool.onrender.com https
 ```
 
-### 4. 웹 대시보드
+### 4. VSCode 확장 프로그램
 
 **제공 기능:**
 
-- ✅ Fly.io 서버 상태 확인
-- ✅ 서버 시작/중지
+- ✅ Render 서버 상태 확인
+- ✅ 서버 깨우기 (Sleep 모드 해제)
 - ✅ 터널 생성 (포트, HTTPS 설정)
 - ✅ 활성 터널 목록
-- ✅ QR 코드 생성
+- ✅ QR 코드 생성 (모바일 접속용)
 - ✅ URL 복사
+- ✅ 브라우저에서 열기
 - ✅ 실시간 상태 업데이트
 
-### 대시보드 포트 변경
+## 🔧 서버 관리
 
-`dashboard/server.js`:
-
-```javascript
-const PORT = 3030; // 원하는 포트로 변경
-```
-
-### 서버 재배포
+### 서버 재배포 (Render)
 
 ```bash
 cd custom-tunnel/server
-flyctl deploy
+
+# Git push로 자동 배포
+git push origin main
+
+# 또는 Render 대시보드에서 수동 배포
+```
+
+자세한 내용은 [RENDER_DEPLOY.md](./RENDER_DEPLOY.md)를 참고하세요.
+
+### 서버 URL 변경
+
+서버 URL을 변경하려면 다음 파일들을 수정하세요:
+
+1. **VSCode 확장**: `src/tunnelManager.ts`
+
+```typescript
+this.serverUrl = "https://your-server.onrender.com";
+```
+
+2. **CLI 클라이언트**: 실행 시 URL 지정
+
+```bash
+npm start 3000 wss://your-server.onrender.com
 ```
 
 ## 시스템 요구사항
 
-- **Node.js**: 18.x 이상
+- **Node.js**: 16.x 이상
 - **OS**: macOS, Linux, Windows
 - **네트워크**: 인터넷 연결 필요
 
@@ -227,6 +219,7 @@ flyctl deploy
 ## 📚 참고 문서
 
 - [QUICK_START.md](./QUICK_START.md) - 빠른 시작 가이드
+- [RENDER_DEPLOY.md](./RENDER_DEPLOY.md) - Render 배포 가이드
 
 ## 📜 라이선스
 
@@ -234,4 +227,4 @@ MIT License
 
 ---
 
-**💡 Tip**: 대시보드(`http://localhost:3030`)를 사용하면 터널 관리가 훨씬 쉽습니다!
+**💡 Tip**: VSCode 확장 프로그램을 사용하면 터널 관리가 훨씬 쉽습니다!
