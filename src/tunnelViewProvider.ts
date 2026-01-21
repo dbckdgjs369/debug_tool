@@ -8,7 +8,7 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
-    private readonly tunnelManager: TunnelManager
+    private readonly tunnelManager: TunnelManager,
   ) {
     // 터널 이벤트 리스닝
     this.tunnelManager.on("tunnelStarted", () => {
@@ -18,12 +18,31 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
     this.tunnelManager.on("tunnelStopped", () => {
       this.refresh();
     });
+
+    this.tunnelManager.on("logAdded", (tunnelId: string, log: any) => {
+      if (this._view) {
+        this._view.webview.postMessage({
+          type: "logAdded",
+          tunnelId: tunnelId,
+          log: log,
+        });
+      }
+    });
+
+    this.tunnelManager.on("logsCleared", (tunnelId: string) => {
+      if (this._view) {
+        this._view.webview.postMessage({
+          type: "logsCleared",
+          tunnelId: tunnelId,
+        });
+      }
+    });
   }
 
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
     context: vscode.WebviewViewResolveContext,
-    _token: vscode.CancellationToken
+    _token: vscode.CancellationToken,
   ) {
     this._view = webviewView;
 
@@ -56,6 +75,22 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
         case "wakeServer":
           await this.handleWakeServer();
           break;
+        case "addLog":
+          this.tunnelManager.addLog(data.tunnelId, data.log);
+          break;
+        case "clearLogs":
+          this.tunnelManager.clearLogs(data.tunnelId);
+          vscode.window.showInformationMessage("콘솔 로그가 지워졌습니다");
+          break;
+        case "testLog":
+          // 테스트용 로그 추가
+          this.tunnelManager.addLog(data.tunnelId, {
+            timestamp: new Date(),
+            level: data.level || "log",
+            message: data.message || "테스트 로그",
+            source: "test",
+          });
+          break;
       }
     });
   }
@@ -64,7 +99,7 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
     try {
       const tunnel = await this.tunnelManager.startTunnel(port, useHttps);
       vscode.window.showInformationMessage(
-        `터널이 시작되었습니다: ${tunnel.url}`
+        `터널이 시작되었습니다: ${tunnel.url}`,
       );
     } catch (error) {
       vscode.window.showErrorMessage(`터널 시작 실패: ${error}`);
@@ -102,7 +137,7 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
         vscode.window.showInformationMessage("서버가 활성화되었습니다!");
       } else {
         vscode.window.showWarningMessage(
-          `서버 활성화 실패: ${status.error || "알 수 없는 오류"}`
+          `서버 활성화 실패: ${status.error || "알 수 없는 오류"}`,
         );
       }
       // 상태 업데이트
@@ -116,6 +151,17 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
     if (this._view) {
       this._view.webview.html = this._getHtmlForWebview(this._view.webview);
     }
+  }
+
+  private escapeHtml(text: string): string {
+    const map: { [key: string]: string } = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#039;",
+    };
+    return text.replace(/[&<>"']/g, (m) => map[m]);
   }
 
   private _getHtmlForWebview(webview: vscode.Webview) {
@@ -499,6 +545,171 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
     .qr-close-btn:hover {
       background: var(--vscode-button-hoverBackground);
     }
+
+    /* 콘솔 패널 스타일 */
+    .console-panel {
+      margin-top: 10px;
+      border-top: 1px solid var(--vscode-panel-border);
+      padding-top: 10px;
+    }
+
+    .console-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .console-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--vscode-foreground);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .console-actions {
+      display: flex;
+      gap: 4px;
+    }
+
+    .console-actions button {
+      padding: 2px 6px;
+      font-size: 10px;
+      min-width: auto;
+    }
+
+    .console-content {
+      background: var(--vscode-input-background);
+      border: 1px solid var(--vscode-input-border);
+      border-radius: 4px;
+      padding: 8px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+      font-size: 11px;
+      display: none;
+    }
+
+    .console-content.expanded {
+      display: block;
+    }
+
+    .console-empty {
+      color: var(--vscode-descriptionForeground);
+      font-style: italic;
+      text-align: center;
+      padding: 10px;
+    }
+
+    .console-log-item {
+      margin-bottom: 4px;
+      padding: 4px;
+      border-radius: 2px;
+      display: flex;
+      gap: 6px;
+      font-size: 10px;
+      line-height: 1.4;
+    }
+
+    .console-log-item.log {
+      background: rgba(78, 201, 176, 0.1);
+      border-left: 2px solid #4ec9b0;
+    }
+
+    .console-log-item.info {
+      background: rgba(75, 150, 255, 0.1);
+      border-left: 2px solid #4b96ff;
+    }
+
+    .console-log-item.warn {
+      background: rgba(255, 204, 0, 0.1);
+      border-left: 2px solid #ffcc00;
+    }
+
+    .console-log-item.error {
+      background: rgba(244, 135, 113, 0.1);
+      border-left: 2px solid #f48771;
+    }
+
+    .console-log-time {
+      color: var(--vscode-descriptionForeground);
+      min-width: 60px;
+      flex-shrink: 0;
+    }
+
+    .console-log-level {
+      min-width: 40px;
+      flex-shrink: 0;
+      font-weight: 600;
+    }
+
+    .console-log-level.log {
+      color: #4ec9b0;
+    }
+
+    .console-log-level.info {
+      color: #4b96ff;
+    }
+
+    .console-log-level.warn {
+      color: #ffcc00;
+    }
+
+    .console-log-level.error {
+      color: #f48771;
+    }
+
+    .console-log-message {
+      flex: 1;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+
+    .console-toggle-btn {
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .btn-console {
+      background: var(--vscode-button-secondaryBackground);
+      color: var(--vscode-button-secondaryForeground);
+      padding: 4px 8px;
+      font-size: 10px;
+    }
+
+    .btn-console:hover {
+      background: var(--vscode-button-secondaryHoverBackground);
+    }
+
+    .script-info {
+      background: rgba(75, 150, 255, 0.1);
+      border: 1px solid rgba(75, 150, 255, 0.3);
+      border-radius: 4px;
+      padding: 8px;
+      margin-top: 8px;
+      font-size: 10px;
+    }
+
+    .script-info-title {
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: #4b96ff;
+    }
+
+    .script-code {
+      background: var(--vscode-input-background);
+      border: 1px solid var(--vscode-input-border);
+      border-radius: 2px;
+      padding: 6px;
+      margin-top: 4px;
+      font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+      font-size: 9px;
+      overflow-x: auto;
+      word-break: break-all;
+      white-space: pre-wrap;
+    }
   </style>
 </head>
 <body>
@@ -552,7 +763,7 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
           : tunnels
               .map(
                 (tunnel) => `
-        <div class="tunnel-item">
+        <div class="tunnel-item" data-tunnel-id="${tunnel.id}">
           <div class="tunnel-header">
             <span class="tunnel-id">🚇 ${tunnel.id}</span>
           </div>
@@ -576,8 +787,108 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
               tunnel.id
             }')">⏹️ 중지</button>
           </div>
+          
+          <!-- 콘솔 패널 -->
+          <div class="console-panel">
+            <div class="console-header">
+              <div class="console-title console-toggle-btn" onclick="toggleConsole('${
+                tunnel.id
+              }')">
+                <span id="console-toggle-icon-${
+                  tunnel.id
+                }">▶</span> <span>원격 콘솔 (${tunnel.logs.length})</span>
+              </div>
+              <div class="console-actions">
+                <button class="btn-console" onclick="testLog('${
+                  tunnel.id
+                }', 'log')">Test</button>
+                <button class="btn-console" onclick="clearConsole('${
+                  tunnel.id
+                }')">Clear</button>
+              </div>
+            </div>
+            <div id="console-content-${tunnel.id}" class="console-content">
+              ${
+                tunnel.logs.length === 0
+                  ? '<div class="console-empty">콘솔 로그가 없습니다</div>'
+                  : tunnel.logs
+                      .map(
+                        (log: any) => `
+                <div class="console-log-item ${log.level}">
+                  <span class="console-log-time">${new Date(
+                    log.timestamp,
+                  ).toLocaleTimeString("ko-KR", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                  })}</span>
+                  <span class="console-log-level ${log.level}">${log.level.toUpperCase()}</span>
+                  <span class="console-log-message">${this.escapeHtml(
+                    log.message,
+                  )}</span>
+                </div>
+              `,
+                      )
+                      .join("")
+              }
+            </div>
+            
+            <!-- 원격 콘솔 스크립트 안내 -->
+            <div class="script-info">
+              <div class="script-info-title">📱 모바일 콘솔 연결 방법</div>
+              <div style="margin-bottom: 6px; color: var(--vscode-descriptionForeground);">
+                웹페이지의 &lt;head&gt; 태그에 아래 스크립트를 추가하세요:
+              </div>
+              <div class="script-code" onclick="copyConsoleScript('${
+                tunnel.id
+              }')" title="클릭하여 복사" style="cursor: pointer;">
+&lt;script&gt;
+(function() {
+  const tunnelId = '${tunnel.id}';
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  const originalError = console.error;
+  const originalInfo = console.info;
+  
+  function sendLog(level, args) {
+    const message = Array.from(args).map(arg => {
+      if (typeof arg === 'object') {
+        try { return JSON.stringify(arg); }
+        catch { return String(arg); }
+      }
+      return String(arg);
+    }).join(' ');
+    
+    fetch('https://debug-tool.onrender.com/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tunnelId, level, message })
+    }).catch(() => {});
+  }
+  
+  console.log = function() {
+    originalLog.apply(console, arguments);
+    sendLog('log', arguments);
+  };
+  console.warn = function() {
+    originalWarn.apply(console, arguments);
+    sendLog('warn', arguments);
+  };
+  console.error = function() {
+    originalError.apply(console, arguments);
+    sendLog('error', arguments);
+  };
+  console.info = function() {
+    originalInfo.apply(console, arguments);
+    sendLog('info', arguments);
+  };
+})();
+&lt;/script&gt;
+              </div>
+            </div>
+          </div>
         </div>
-      `
+      `,
               )
               .join("")
       }
@@ -755,6 +1066,177 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
         closeQRModal();
       }
     });
+
+    // 콘솔 토글
+    function toggleConsole(tunnelId) {
+      const content = document.getElementById(\`console-content-\${tunnelId}\`);
+      const icon = document.getElementById(\`console-toggle-icon-\${tunnelId}\`);
+      
+      if (content.classList.contains('expanded')) {
+        content.classList.remove('expanded');
+        icon.textContent = '▶';
+      } else {
+        content.classList.add('expanded');
+        icon.textContent = '▼';
+        // 스크롤을 맨 아래로
+        setTimeout(() => {
+          content.scrollTop = content.scrollHeight;
+        }, 50);
+      }
+    }
+
+    // 테스트 로그 추가
+    function testLog(tunnelId, level) {
+      const levels = ['log', 'info', 'warn', 'error'];
+      const randomLevel = level || levels[Math.floor(Math.random() * levels.length)];
+      const messages = [
+        '테스트 로그 메시지입니다',
+        'Hello from mobile device!',
+        'API 호출 성공',
+        '데이터 로딩 완료',
+        '사용자 이벤트 발생'
+      ];
+      const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+      
+      vscode.postMessage({
+        type: 'testLog',
+        tunnelId: tunnelId,
+        level: randomLevel,
+        message: randomMessage
+      });
+    }
+
+    // 콘솔 클리어
+    function clearConsole(tunnelId) {
+      vscode.postMessage({
+        type: 'clearLogs',
+        tunnelId: tunnelId
+      });
+    }
+
+    // 콘솔 스크립트 복사
+    function copyConsoleScript(tunnelId) {
+      const script = '<script>' +
+        '(function() {' +
+        '  const tunnelId = "' + tunnelId + '";' +
+        '  const originalLog = console.log;' +
+        '  const originalWarn = console.warn;' +
+        '  const originalError = console.error;' +
+        '  const originalInfo = console.info;' +
+        '  ' +
+        '  function sendLog(level, args) {' +
+        '    const message = Array.from(args).map(arg => {' +
+        '      if (typeof arg === "object") {' +
+        '        try { return JSON.stringify(arg); }' +
+        '        catch { return String(arg); }' +
+        '      }' +
+        '      return String(arg);' +
+        '    }).join(" ");' +
+        '    ' +
+        '    fetch("https://debug-tool.onrender.com/log", {' +
+        '      method: "POST",' +
+        '      headers: { "Content-Type": "application/json" },' +
+        '      body: JSON.stringify({ tunnelId, level, message })' +
+        '    }).catch(() => {});' +
+        '  }' +
+        '  ' +
+        '  console.log = function() {' +
+        '    originalLog.apply(console, arguments);' +
+        '    sendLog("log", arguments);' +
+        '  };' +
+        '  console.warn = function() {' +
+        '    originalWarn.apply(console, arguments);' +
+        '    sendLog("warn", arguments);' +
+        '  };' +
+        '  console.error = function() {' +
+        '    originalError.apply(console, arguments);' +
+        '    sendLog("error", arguments);' +
+        '  };' +
+        '  console.info = function() {' +
+        '    originalInfo.apply(console, arguments);' +
+        '    sendLog("info", arguments);' +
+        '  };' +
+        '})();' +
+        '<' + '/script>';
+      
+      navigator.clipboard.writeText(script).then(() => {
+        vscode.postMessage({
+          type: 'copyUrl',
+          url: '콘솔 스크립트가 복사되었습니다'
+        });
+      });
+    }
+
+    // 로그 추가 이벤트 리스너
+    window.addEventListener('message', event => {
+      const message = event.data;
+      
+      if (message.type === 'logAdded') {
+        const tunnelId = message.tunnelId;
+        const log = message.log;
+        const content = document.getElementById(\`console-content-\${tunnelId}\`);
+        
+        if (content) {
+          // 빈 상태 메시지 제거
+          const emptyState = content.querySelector('.console-empty');
+          if (emptyState) {
+            emptyState.remove();
+          }
+          
+          // 새 로그 아이템 생성
+          const logItem = document.createElement('div');
+          logItem.className = \`console-log-item \${log.level}\`;
+          
+          const time = new Date(log.timestamp).toLocaleTimeString('ko-KR', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+          });
+          
+          logItem.innerHTML = \`
+            <span class="console-log-time">\${time}</span>
+            <span class="console-log-level \${log.level}">\${log.level.toUpperCase()}</span>
+            <span class="console-log-message">\${escapeHtml(log.message)}</span>
+          \`;
+          
+          content.appendChild(logItem);
+          
+          // 로그 카운트 업데이트
+          const titleSpan = content.previousElementSibling.querySelector('.console-title span:last-child');
+          if (titleSpan) {
+            const currentCount = content.querySelectorAll('.console-log-item').length;
+            titleSpan.textContent = \`원격 콘솔 (\${currentCount})\`;
+          }
+          
+          // 자동 스크롤 (콘솔이 열려있을 때만)
+          if (content.classList.contains('expanded')) {
+            content.scrollTop = content.scrollHeight;
+          }
+        }
+      }
+      
+      if (message.type === 'logsCleared') {
+        const tunnelId = message.tunnelId;
+        const content = document.getElementById(\`console-content-\${tunnelId}\`);
+        
+        if (content) {
+          content.innerHTML = '<div class="console-empty">콘솔 로그가 없습니다</div>';
+          
+          // 로그 카운트 업데이트
+          const titleSpan = content.previousElementSibling.querySelector('.console-title span:last-child');
+          if (titleSpan) {
+            titleSpan.textContent = '원격 콘솔 (0)';
+          }
+        }
+      }
+    });
+
+    // HTML 이스케이프 함수
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
 
     // 페이지 로드시 서버 상태 확인
     refreshServerStatus();

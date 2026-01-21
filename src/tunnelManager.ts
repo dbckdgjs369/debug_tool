@@ -3,6 +3,13 @@ import * as path from "path";
 import { EventEmitter } from "events";
 import axios from "axios";
 
+export interface ConsoleLog {
+  timestamp: Date;
+  level: "log" | "warn" | "error" | "info";
+  message: string;
+  source?: string;
+}
+
 export interface Tunnel {
   id: string;
   port: number;
@@ -10,6 +17,7 @@ export interface Tunnel {
   startTime: Date;
   useHttps: boolean;
   process?: ChildProcess;
+  logs: ConsoleLog[];
 }
 
 export interface ServerStatus {
@@ -24,6 +32,7 @@ export class TunnelManager extends EventEmitter {
   private activeTunnels: Map<string, Tunnel> = new Map();
   private clientPath: string;
   private serverUrl: string;
+  private maxLogsPerTunnel: number = 500; // 터널당 최대 로그 개수
 
   constructor() {
     super();
@@ -113,6 +122,7 @@ export class TunnelManager extends EventEmitter {
             startTime: new Date(),
             useHttps: useHttps,
             process: tunnelProcess,
+            logs: [],
           };
 
           this.activeTunnels.set(tunnelId, tunnel);
@@ -170,7 +180,36 @@ export class TunnelManager extends EventEmitter {
       url: t.url,
       startTime: t.startTime,
       useHttps: t.useHttps,
+      logs: t.logs,
     }));
+  }
+
+  // 터널에 로그 추가
+  addLog(tunnelId: string, log: ConsoleLog): void {
+    const tunnel = this.activeTunnels.get(tunnelId);
+    if (tunnel) {
+      tunnel.logs.push(log);
+      // 최대 로그 개수 제한
+      if (tunnel.logs.length > this.maxLogsPerTunnel) {
+        tunnel.logs.shift();
+      }
+      this.emit("logAdded", tunnelId, log);
+    }
+  }
+
+  // 터널 로그 가져오기
+  getLogs(tunnelId: string): ConsoleLog[] {
+    const tunnel = this.activeTunnels.get(tunnelId);
+    return tunnel ? tunnel.logs : [];
+  }
+
+  // 터널 로그 초기화
+  clearLogs(tunnelId: string): void {
+    const tunnel = this.activeTunnels.get(tunnelId);
+    if (tunnel) {
+      tunnel.logs = [];
+      this.emit("logsCleared", tunnelId);
+    }
   }
 
   getTunnel(tunnelId: string): Tunnel | undefined {
