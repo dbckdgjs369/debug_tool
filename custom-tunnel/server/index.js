@@ -50,7 +50,17 @@ console.log("🚀 Custom Tunnel Server Starting...");
 // JSON body parser 미들웨어 추가
 app.use(express.json());
 
-// 로그 수신 엔드포인트
+// 로그 수신 엔드포인트 (GET은 상태 확인용)
+app.get("/log", (req, res) => {
+  res.json({
+    status: "active",
+    message: "Remote console log endpoint is ready",
+    activeTunnels: tunnels.size,
+    usage: "POST to this endpoint with {tunnelId, level, message}",
+  });
+});
+
+// 로그 수신 엔드포인트 (POST는 실제 로그 전송)
 app.post("/log", (req, res) => {
   const { tunnelId, level, message } = req.body;
 
