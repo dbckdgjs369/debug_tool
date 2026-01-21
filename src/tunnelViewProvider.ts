@@ -640,60 +640,6 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
                       .join("")
               }
             </div>
-            
-            <!-- 원격 콘솔 스크립트 안내 -->
-            <div class="script-info">
-              <div class="script-info-title">📱 모바일 콘솔 연결 방법</div>
-              <div style="margin-bottom: 6px; color: var(--vscode-descriptionForeground);">
-                웹페이지의 &lt;head&gt; 태그에 아래 스크립트를 추가하세요:
-              </div>
-              <div class="script-code" onclick="copyConsoleScript('${
-                tunnel.id
-              }')" title="클릭하여 복사" style="cursor: pointer;">
-&lt;script&gt;
-(function() {
-  const tunnelId = '${tunnel.id}';
-  const originalLog = console.log;
-  const originalWarn = console.warn;
-  const originalError = console.error;
-  const originalInfo = console.info;
-  
-  function sendLog(level, args) {
-    const message = Array.from(args).map(arg => {
-      if (typeof arg === 'object') {
-        try { return JSON.stringify(arg); }
-        catch { return String(arg); }
-      }
-      return String(arg);
-    }).join(' ');
-    
-    fetch('https://debug-tool.onrender.com/log', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tunnelId, level, message })
-    }).catch(() => {});
-  }
-  
-  console.log = function() {
-    originalLog.apply(console, arguments);
-    sendLog('log', arguments);
-  };
-  console.warn = function() {
-    originalWarn.apply(console, arguments);
-    sendLog('warn', arguments);
-  };
-  console.error = function() {
-    originalError.apply(console, arguments);
-    sendLog('error', arguments);
-  };
-  console.info = function() {
-    originalInfo.apply(console, arguments);
-    sendLog('info', arguments);
-  };
-})();
-&lt;/script&gt;
-              </div>
-            </div>
           </div>
         </div>
       `,
@@ -854,59 +800,6 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
       vscode.postMessage({
         type: 'clearLogs',
         tunnelId: tunnelId
-      });
-    }
-
-    // 콘솔 스크립트 복사
-    function copyConsoleScript(tunnelId) {
-      const script = '<script>' +
-        '(function() {' +
-        '  const tunnelId = "' + tunnelId + '";' +
-        '  const originalLog = console.log;' +
-        '  const originalWarn = console.warn;' +
-        '  const originalError = console.error;' +
-        '  const originalInfo = console.info;' +
-        '  ' +
-        '  function sendLog(level, args) {' +
-        '    const message = Array.from(args).map(arg => {' +
-        '      if (typeof arg === "object") {' +
-        '        try { return JSON.stringify(arg); }' +
-        '        catch { return String(arg); }' +
-        '      }' +
-        '      return String(arg);' +
-        '    }).join(" ");' +
-        '    ' +
-        '    fetch("https://debug-tool.onrender.com/log", {' +
-        '      method: "POST",' +
-        '      headers: { "Content-Type": "application/json" },' +
-        '      body: JSON.stringify({ tunnelId, level, message })' +
-        '    }).catch(() => {});' +
-        '  }' +
-        '  ' +
-        '  console.log = function() {' +
-        '    originalLog.apply(console, arguments);' +
-        '    sendLog("log", arguments);' +
-        '  };' +
-        '  console.warn = function() {' +
-        '    originalWarn.apply(console, arguments);' +
-        '    sendLog("warn", arguments);' +
-        '  };' +
-        '  console.error = function() {' +
-        '    originalError.apply(console, arguments);' +
-        '    sendLog("error", arguments);' +
-        '  };' +
-        '  console.info = function() {' +
-        '    originalInfo.apply(console, arguments);' +
-        '    sendLog("info", arguments);' +
-        '  };' +
-        '})();' +
-        '<' + '/script>';
-      
-      navigator.clipboard.writeText(script).then(() => {
-        vscode.postMessage({
-          type: 'copyUrl',
-          url: '콘솔 스크립트가 복사되었습니다'
-        });
       });
     }
 
