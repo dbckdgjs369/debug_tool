@@ -17,6 +17,9 @@ console.log(`🌐 터널 서버: ${tunnelServerUrl}`);
 // 터널 서버에 연결
 const ws = new WebSocket(tunnelServerUrl);
 
+// 터널 ID 저장 변수
+let tunnelId = null;
+
 ws.on("open", () => {
   console.log("✅ 터널 서버 연결 성공!");
 });
@@ -26,6 +29,7 @@ ws.on("message", async (message) => {
     const data = JSON.parse(message);
 
     if (data.type === "connected") {
+      tunnelId = data.tunnelId; // 터널 ID 저장
       console.log("\n🎉 터널 생성 완료!");
       console.log(`📎 터널 URL: ${data.url}`);
       console.log(`🔑 터널 ID: ${data.tunnelId}`);
@@ -170,8 +174,7 @@ ws.on("message", async (message) => {
         // HTML 응답의 경우 React Router 자동 패치 스크립트 + 콘솔 캡처 스크립트 추가
         if (
           response.status === 200 &&
-          cleanResponseHeaders["content-type"]?.includes("text/html") &&
-          url === "/"
+          cleanResponseHeaders["content-type"]?.includes("text/html")
         ) {
           // 터널 ID 가져오기
           const tunnelIdFromClient = tunnelId || "unknown";
