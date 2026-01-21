@@ -20,14 +20,6 @@ export interface Tunnel {
   logs: ConsoleLog[];
 }
 
-export interface ServerStatus {
-  isOnline: boolean;
-  status?: string;
-  timestamp?: string;
-  activeTunnels?: number;
-  error?: string;
-}
-
 export class TunnelManager extends EventEmitter {
   private activeTunnels: Map<string, Tunnel> = new Map();
   private clientPath: string;
@@ -40,43 +32,6 @@ export class TunnelManager extends EventEmitter {
     this.clientPath = path.join(__dirname, "../custom-tunnel/client/index.js");
     // 터널 서버 URL
     this.serverUrl = "https://debug-tool.onrender.com";
-  }
-
-  async checkServerStatus(): Promise<ServerStatus> {
-    try {
-      const response = await axios.get(`${this.serverUrl}/health`, {
-        timeout: 10000,
-      });
-      return {
-        isOnline: true,
-        status: response.data.status,
-        timestamp: response.data.timestamp,
-        activeTunnels: response.data.activeTunnels,
-      };
-    } catch (error: any) {
-      return {
-        isOnline: false,
-        error: error.message || "서버에 연결할 수 없습니다",
-      };
-    }
-  }
-
-  async wakeServer(): Promise<ServerStatus> {
-    try {
-      const response = await axios.get(`${this.serverUrl}/wake`, {
-        timeout: 30000, // wake는 더 긴 타임아웃
-      });
-      return {
-        isOnline: true,
-        status: response.data.status,
-        timestamp: response.data.timestamp,
-      };
-    } catch (error: any) {
-      return {
-        isOnline: false,
-        error: error.message || "서버를 깨울 수 없습니다",
-      };
-    }
   }
 
   async startTunnel(port: number, useHttps: boolean = false): Promise<Tunnel> {

@@ -66,7 +66,7 @@ wss.on("connection", (ws, req) => {
       type: "connected",
       tunnelId: tunnelId,
       url: serverUrl,
-    })
+    }),
   );
 
   // 클라이언트로부터 응답 받기
@@ -108,25 +108,6 @@ wss.on("connection", (ws, req) => {
 
   ws.on("error", (error) => {
     console.error(`❌ WebSocket 오류 (${tunnelId}):`, error);
-  });
-});
-
-// Health Check 엔드포인트 (서버 상태 확인용)
-app.get("/health", (req, res) => {
-  res.json({
-    status: "ok",
-    timestamp: new Date().toISOString(),
-    activeTunnels: tunnels.size,
-    pendingRequests: pendingRequests.size,
-  });
-});
-
-// Wake 엔드포인트 (서버 깨우기용)
-app.get("/wake", (req, res) => {
-  res.json({
-    status: "awake",
-    message: "Server is now awake",
-    timestamp: new Date().toISOString(),
   });
 });
 
@@ -209,7 +190,7 @@ app.all("*", (req, res) => {
           url: fullPath,
           headers: req.headers,
           body: body,
-        })
+        }),
       );
 
       console.log(`📨 터널로 전송: ${req.method} ${fullPath}`);

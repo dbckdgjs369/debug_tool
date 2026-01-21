@@ -69,12 +69,6 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
         case "openUrl":
           vscode.env.openExternal(vscode.Uri.parse(data.url));
           break;
-        case "checkServerStatus":
-          await this.handleCheckServerStatus();
-          break;
-        case "wakeServer":
-          await this.handleWakeServer();
-          break;
         case "addLog":
           this.tunnelManager.addLog(data.tunnelId, data.log);
           break;
@@ -112,38 +106,6 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
       vscode.window.showInformationMessage("터널이 중지되었습니다");
     } catch (error) {
       vscode.window.showErrorMessage(`터널 중지 실패: ${error}`);
-    }
-  }
-
-  private async handleCheckServerStatus() {
-    try {
-      const status = await this.tunnelManager.checkServerStatus();
-      if (this._view) {
-        this._view.webview.postMessage({
-          type: "serverStatus",
-          status: status,
-        });
-      }
-    } catch (error) {
-      vscode.window.showErrorMessage(`서버 상태 확인 실패: ${error}`);
-    }
-  }
-
-  private async handleWakeServer() {
-    try {
-      vscode.window.showInformationMessage("서버를 깨우는 중입니다...");
-      const status = await this.tunnelManager.wakeServer();
-      if (status.isOnline) {
-        vscode.window.showInformationMessage("서버가 활성화되었습니다!");
-      } else {
-        vscode.window.showWarningMessage(
-          `서버 활성화 실패: ${status.error || "알 수 없는 오류"}`,
-        );
-      }
-      // 상태 업데이트
-      await this.handleCheckServerStatus();
-    } catch (error) {
-      vscode.window.showErrorMessage(`서버 깨우기 실패: ${error}`);
     }
   }
 
@@ -348,137 +310,6 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
       padding: 30px 10px;
       color: var(--vscode-descriptionForeground);
       font-size: 13px;
-    }
-
-    .dashboard-status {
-      font-size: 12px;
-      padding: 8px;
-      border-radius: 4px;
-      margin-bottom: 15px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .dashboard-status.connected {
-      background: rgba(78, 201, 176, 0.1);
-      border: 1px solid rgba(78, 201, 176, 0.3);
-    }
-
-    .dashboard-status.disconnected {
-      background: rgba(244, 135, 113, 0.1);
-      border: 1px solid rgba(244, 135, 113, 0.3);
-    }
-
-    .server-status-section {
-      background: var(--vscode-editor-background);
-      border: 1px solid var(--vscode-panel-border);
-      border-radius: 4px;
-      padding: 12px;
-      margin-bottom: 15px;
-    }
-
-    .server-status-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 10px;
-    }
-
-    .server-status-title {
-      font-size: 13px;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .server-status-info {
-      font-size: 11px;
-      color: var(--vscode-descriptionForeground);
-      margin-bottom: 10px;
-    }
-
-    .server-status-actions {
-      display: flex;
-      gap: 6px;
-    }
-
-    .server-status-actions button {
-      flex: 1;
-      padding: 6px 12px;
-      font-size: 12px;
-    }
-
-    .btn-success {
-      background: #4ec9b0;
-      color: #000;
-    }
-
-    .btn-success:hover {
-      background: #5fd4bb;
-    }
-
-    .status-loading {
-      color: var(--vscode-descriptionForeground);
-    }
-
-    .status-online {
-      color: #4ec9b0;
-    }
-
-    .status-offline {
-      color: #f48771;
-    }
-
-    .btn-icon {
-      padding: 6px 10px;
-      min-width: auto;
-      background: var(--vscode-button-secondaryBackground);
-      color: var(--vscode-button-secondaryForeground);
-      border-radius: 50%;
-      width: 32px;
-      height: 32px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s ease;
-      font-size: 14px;
-    }
-
-    .btn-icon:hover {
-      background: var(--vscode-button-secondaryHoverBackground);
-      transform: scale(1.1);
-    }
-
-    .btn-icon:active {
-      transform: scale(0.95);
-    }
-
-    .btn-icon.spinning {
-      animation: spin 0.6s linear;
-    }
-
-    @keyframes spin {
-      from {
-        transform: rotate(0deg);
-      }
-      to {
-        transform: rotate(360deg);
-      }
-    }
-
-    @keyframes pulse {
-      0%, 100% {
-        opacity: 1;
-      }
-      50% {
-        opacity: 0.5;
-      }
-    }
-
-    .status-dot.pulsing {
-      animation: pulse 1.5s ease-in-out infinite;
     }
 
     /* QR 코드 모달 */
@@ -715,29 +546,6 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
 <body>
   <h2>🚇 Custom Tunnel</h2>
 
-  <!-- 서버 상태 섹션 -->
-  <div class="section">
-    <div class="server-status-section">
-      <div class="server-status-header">
-        <div class="server-status-title">
-          <span>🖥️ 터널 서버</span>
-          <span id="serverStatusDot" class="status-dot"></span>
-        </div>
-        <button class="btn-secondary btn-icon" onclick="refreshServerStatus()" title="새로고침">
-          🔄
-        </button>
-      </div>
-      <div id="serverStatusInfo" class="server-status-info status-loading">
-        상태 확인 중...
-      </div>
-      <div class="server-status-actions">
-        <button id="wakeServerBtn" class="btn-success" onclick="wakeServer()" disabled>
-          ⚡ 서버 깨우기
-        </button>
-      </div>
-    </div>
-  </div>
-
   <div class="section">
     <div class="quick-start">
       <h3 style="margin-top: 0; margin-bottom: 10px; font-size: 13px;">⚡ 빠른 시작</h3>
@@ -949,71 +757,6 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
         type: 'openUrl',
         url: url
       });
-    }
-
-    // 서버 상태 확인
-    function refreshServerStatus() {
-      const statusInfo = document.getElementById('serverStatusInfo');
-      const statusDot = document.getElementById('serverStatusDot');
-      const wakeBtn = document.getElementById('wakeServerBtn');
-      const refreshBtn = event?.target;
-
-      statusInfo.textContent = '상태 확인 중...';
-      statusInfo.className = 'server-status-info status-loading';
-      statusDot.className = 'status-dot pulsing';
-      
-      // 새로고침 버튼 회전 애니메이션
-      if (refreshBtn) {
-        refreshBtn.classList.add('spinning');
-        // 애니메이션 종료 후 클래스 제거
-        setTimeout(() => {
-          refreshBtn.classList.remove('spinning');
-        }, 600);
-      }
-      
-      vscode.postMessage({
-        type: 'checkServerStatus'
-      });
-    }
-
-    // 서버 깨우기
-    function wakeServer() {
-      const wakeBtn = document.getElementById('wakeServerBtn');
-      wakeBtn.disabled = true;
-      wakeBtn.textContent = '⏳ 깨우는 중...';
-      
-      vscode.postMessage({
-        type: 'wakeServer'
-      });
-    }
-
-    // 서버 상태 업데이트 받기
-    window.addEventListener('message', event => {
-      const message = event.data;
-      if (message.type === 'serverStatus') {
-        updateServerStatus(message.status);
-      }
-    });
-
-    // 서버 상태 UI 업데이트
-    function updateServerStatus(status) {
-      const statusInfo = document.getElementById('serverStatusInfo');
-      const statusDot = document.getElementById('serverStatusDot');
-      const wakeBtn = document.getElementById('wakeServerBtn');
-
-      if (status.isOnline) {
-        statusInfo.innerHTML = '<span class="status-online">✅ 온라인</span>' + 
-          (status.activeTunnels !== undefined ? ' | 활성 터널: ' + status.activeTunnels + '개' : '');
-        statusDot.className = 'status-dot connected';
-        wakeBtn.disabled = true;
-        wakeBtn.textContent = '⚡ 서버 깨우기';
-      } else {
-        statusInfo.innerHTML = '<span class="status-offline">❌ 오프라인</span>' + 
-          (status.error ? '<br>' + status.error : ' (서버가 Sleep 모드일 수 있습니다)');
-        statusDot.className = 'status-dot disconnected';
-        wakeBtn.disabled = false;
-        wakeBtn.textContent = '⚡ 서버 깨우기';
-      }
     }
 
     // Enter 키로 터널 시작
@@ -1237,9 +980,6 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
       div.textContent = text;
       return div.innerHTML;
     }
-
-    // 페이지 로드시 서버 상태 확인
-    refreshServerStatus();
   </script>
 </body>
 </html>`;
