@@ -10,11 +10,17 @@ const cookieParser = require("cookie-parser");
 const app = express();
 app.use(cookieParser());
 
-// CORS 설정 (모든 출처 허용)
+// CORS 설정 (모든 출처 허용 + 쿠키 지원)
 app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
+  // Origin 헤더가 있으면 그것을 사용, 없으면 와일드카드
+  const origin = req.headers.origin || "*";
+  res.header("Access-Control-Allow-Origin", origin);
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, Cookie",
+  );
+  res.header("Access-Control-Allow-Credentials", "true"); // 쿠키 전송 허용
 
   // Preflight 요청 처리
   if (req.method === "OPTIONS") {
@@ -175,7 +181,7 @@ app.all("*", (req, res) => {
   let tunnelId;
   let fullPath;
 
-  // 경로에서 터널 ID 추출하거나 쿠키에서 가져오기
+  // 경로에서 터널 ID 추출하거나 쿠키/query parameter/referer에서 가져오기
   // 슬래시 유무 모두 허용: /abc12345 또는 /abc12345/
   const pathMatch = req.path.match(/^\/([a-f0-9]{8})(\/.*)?$/);
 
@@ -209,10 +215,53 @@ app.all("*", (req, res) => {
     tunnelId = req.cookies.tunnelId;
     fullPath = req.path;
     console.log(`🍪 쿠키에서 터널 ID 가져옴: ${tunnelId}, path=${fullPath}`);
+  } else if (req.query.tunnelId) {
+    // Query parameter에서 터널 ID 가져오기 (fallback)
+    tunnelId = req.query.tunnelId;
+    fullPath = req.path;
+    console.log(
+      `🔗 Query parameter에서 터널 ID 가져옴: ${tunnelId}, path=${fullPath}`,
+    );
+
+    // 쿠키도 설정해서 다음 요청부터는 쿠키 사용
+    const cookieOptions = {
+      httpOnly: false,
+      path: "/",
+      sameSite: isProduction ? "none" : "lax",
+      secure: isProduction,
+      maxAge: 24 * 60 * 60 * 1000,
+    };
+    res.cookie("tunnelId", tunnelId, cookieOptions);
+  } else if (req.headers.referer) {
+    // Referer 헤더에서 터널 ID 추출 (manifest.json 등 쿠키가 전달되지 않는 경우)
+    const refererMatch = req.headers.referer.match(/\/([a-f0-9]{8})(\/|$)/);
+    if (refererMatch) {
+      tunnelId = refererMatch[1];
+      fullPath = req.path;
+      console.log(
+        `🔗 Referer 헤더에서 터널 ID 추출: ${tunnelId}, path=${fullPath}, referer=${req.headers.referer}`,
+      );
+
+      // 쿠키도 설정해서 다음 요청부터는 쿠키 사용
+      const cookieOptions = {
+        httpOnly: false,
+        path: "/",
+        sameSite: isProduction ? "none" : "lax",
+        secure: isProduction,
+        maxAge: 24 * 60 * 60 * 1000,
+      };
+      res.cookie("tunnelId", tunnelId, cookieOptions);
+    } else {
+      // Referer에서도 터널 ID를 찾을 수 없음
+      console.warn(
+        `⚠️  터널 ID를 찾을 수 없음: path=${req.path}, cookies=${JSON.stringify(req.cookies)}, query=${JSON.stringify(req.query)}, referer=${req.headers.referer}`,
+      );
+      return res.status(404).send("Tunnel ID not found");
+    }
   } else {
     // 터널 ID를 찾을 수 없음
     console.warn(
-      `⚠️  터널 ID를 찾을 수 없음: path=${req.path}, cookies=${JSON.stringify(req.cookies)}`,
+      `⚠️  터널 ID를 찾을 수 없음: path=${req.path}, cookies=${JSON.stringify(req.cookies)}, query=${JSON.stringify(req.query)}, headers.cookie=${req.headers.cookie}, referer=${req.headers.referer}`,
     );
     return res.status(404).send("Tunnel ID not found");
   }
