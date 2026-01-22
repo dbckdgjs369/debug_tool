@@ -51,21 +51,41 @@ export class TunnelManager extends EventEmitter {
       let tunnelId: string | null = null;
       let tunnelUrl: string | null = null;
       let resolved = false;
+      let allOutput = ""; // 모든 출력 저장
+      let allErrors = ""; // 모든 에러 저장
+      let connectionStarted = false;
 
       tunnelProcess.stdout.on("data", (data) => {
         const output = data.toString();
+        allOutput += output;
         console.log(`Tunnel output: ${output}`);
+
+        // 연결 시작 감지
+        if (
+          output.includes("터널 클라이언트 시작") ||
+          output.includes("로컬 서버")
+        ) {
+          connectionStarted = true;
+          console.log("✅ 터널 클라이언트 초기화 완료");
+        }
+
+        // 서버 연결 성공 감지
+        if (output.includes("터널 서버 연결 성공")) {
+          console.log("✅ 터널 서버 연결 완료");
+        }
 
         // 터널 ID 추출
         const idMatch = output.match(/🔑 터널 ID: ([a-f0-9]{8})/);
         if (idMatch && !tunnelId) {
           tunnelId = idMatch[1];
+          console.log(`✅ 터널 ID 할당됨: ${tunnelId}`);
         }
 
         // URL 추출
         const urlMatch = output.match(/📎 터널 URL: (https:\/\/[^\s]+)/);
         if (urlMatch && !tunnelUrl) {
           tunnelUrl = urlMatch[1];
+          console.log(`✅ 터널 URL 생성됨: ${tunnelUrl}`);
         }
 
         // 원격 로그 파싱
@@ -100,12 +120,15 @@ export class TunnelManager extends EventEmitter {
           this.activeTunnels.set(tunnelId, tunnel);
           this.emit("tunnelStarted", tunnel);
           resolved = true;
+          console.log(`✅ 터널 시작 완료: ${tunnelId}`);
           resolve(tunnel);
         }
       });
 
       tunnelProcess.stderr.on("data", (data) => {
-        console.error(`Tunnel error: ${data}`);
+        const error = data.toString();
+        allErrors += error;
+        console.error(`Tunnel error: ${error}`);
       });
 
       tunnelProcess.on("close", (code) => {
@@ -119,18 +142,42 @@ export class TunnelManager extends EventEmitter {
       tunnelProcess.on("error", (error) => {
         if (!resolved) {
           resolved = true;
-          reject(error);
+          reject(new Error(`Process error: ${error.message}`));
         }
       });
 
-      // 10초 후에도 URL이 없으면 실패
+      // 60초 후에도 URL이 없으면 실패 (Render.com 슬립 모드 고려)
       setTimeout(() => {
         if (!resolved) {
           tunnelProcess.kill();
           resolved = true;
-          reject(new Error("Tunnel failed to start within 10 seconds"));
+
+          // 상세한 에러 메시지 생성
+          let errorMessage = "Tunnel failed to start within 60 seconds.\n\n";
+
+          if (!connectionStarted) {
+            errorMessage += "❌ 터널 클라이언트 초기화 실패\n";
+            errorMessage += "- Node.js가 설치되어 있는지 확인하세요\n";
+            errorMessage += `- 클라이언트 경로 확인: ${this.clientPath}\n`;
+          } else if (!tunnelId || !tunnelUrl) {
+            errorMessage += "❌ 터널 서버 연결 실패\n";
+            errorMessage +=
+              "- 서버가 슬립 모드일 수 있습니다 (최대 1분 대기)\n";
+            errorMessage += "- 네트워크 연결을 확인하세요\n";
+            errorMessage += `- 서버 URL: ${this.serverUrl}\n`;
+          }
+
+          if (allOutput) {
+            errorMessage += "\n📋 출력 로그:\n" + allOutput;
+          }
+
+          if (allErrors) {
+            errorMessage += "\n❌ 에러 로그:\n" + allErrors;
+          }
+
+          reject(new Error(errorMessage));
         }
-      }, 10000);
+      }, 60000);
     });
   }
 

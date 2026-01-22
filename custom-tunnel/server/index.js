@@ -179,13 +179,28 @@ app.all("*", (req, res) => {
   // 슬래시 유무 모두 허용: /abc12345 또는 /abc12345/
   const pathMatch = req.path.match(/^\/([a-f0-9]{8})(\/.*)?$/);
 
+  // 호스트 정보 가져오기 (쿠키 설정용)
+  const host = req.headers.host || "localhost:8080";
+  const isProduction = !host.includes("localhost");
+
   if (pathMatch) {
     // URL에 터널 ID가 있는 경우: /abc12345/path
     tunnelId = pathMatch[1];
     fullPath = pathMatch[2] || "/";
 
-    // 쿠키에 터널 ID 저장
-    res.cookie("tunnelId", tunnelId, { httpOnly: true, path: "/" });
+    // 쿠키에 터널 ID 저장 (크로스 도메인 지원)
+    const cookieOptions = {
+      httpOnly: false, // 클라이언트 JavaScript에서도 접근 가능하도록
+      path: "/",
+      sameSite: isProduction ? "none" : "lax", // 프로덕션: none, 로컬: lax
+      secure: isProduction, // HTTPS에서만 전송 (프로덕션)
+      maxAge: 24 * 60 * 60 * 1000, // 24시간
+    };
+
+    res.cookie("tunnelId", tunnelId, cookieOptions);
+    console.log(
+      `🍪 쿠키 설정: tunnelId=${tunnelId}, path=${req.path}, sameSite=${cookieOptions.sameSite}, secure=${isProduction}`,
+    );
 
     // fullPath는 이미 / 로 설정됨 (React Router가 / 를 인식)
     // 리다이렉트 없이 바로 처리
@@ -193,8 +208,12 @@ app.all("*", (req, res) => {
     // 쿠키에 터널 ID가 있는 경우: 모든 요청 처리
     tunnelId = req.cookies.tunnelId;
     fullPath = req.path;
+    console.log(`🍪 쿠키에서 터널 ID 가져옴: ${tunnelId}, path=${fullPath}`);
   } else {
     // 터널 ID를 찾을 수 없음
+    console.warn(
+      `⚠️  터널 ID를 찾을 수 없음: path=${req.path}, cookies=${JSON.stringify(req.cookies)}`,
+    );
     return res.status(404).send("Tunnel ID not found");
   }
 
