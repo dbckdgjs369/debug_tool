@@ -53,9 +53,6 @@ const pendingRequests = new Map();
 
 console.log("🚀 Custom Tunnel Server Starting...");
 
-// JSON body parser 미들웨어 추가
-app.use(express.json());
-
 // 로그 수신 엔드포인트 (GET은 상태 확인용)
 app.get("/log", (req, res) => {
   res.json({
@@ -67,7 +64,7 @@ app.get("/log", (req, res) => {
 });
 
 // 로그 수신 엔드포인트 (POST는 실제 로그 전송)
-app.post("/log", (req, res) => {
+app.post("/log", express.json(), (req, res) => {
   const { tunnelId, level, message } = req.body;
 
   console.log(`📝 로그 수신: [${tunnelId}] ${level}: ${message}`);
