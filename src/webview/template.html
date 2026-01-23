@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src {{cspSource}} 'unsafe-inline'; script-src {{cspSource}} 'unsafe-inline' https://cdnjs.cloudflare.com; img-src {{cspSource}} https:; connect-src https:;"
+    />
+    <title>Custom Tunnel</title>
+    <link rel="stylesheet" href="{{styleUri}}" />
+  </head>
+  <body>
+    <h2>🚇 Custom Tunnel</h2>
+
+    <div class="section">
+      <div class="quick-start">
+        <h3 style="margin-top: 0; margin-bottom: 10px; font-size: 13px">
+          ⚡ 빠른 시작
+        </h3>
+        <div class="input-group">
+          <input
+            type="number"
+            id="portInput"
+            placeholder="포트 (예: 3000)"
+            min="1"
+            max="65535"
+          />
+        </div>
+        <div class="checkbox-group">
+          <input type="checkbox" id="httpsCheckbox" />
+          <label for="httpsCheckbox">HTTPS 사용</label>
+        </div>
+        <button onclick="startTunnel()">🚇 터널 시작</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3 style="margin-top: 0; margin-bottom: 10px; font-size: 13px">
+        📋 활성 터널 ({{tunnelCount}})
+      </h3>
+      <div class="tunnel-list" id="tunnelList">{{tunnelListContent}}</div>
+    </div>
+
+    <!-- QR 코드 모달 -->
+    <div id="qrModal" class="qr-modal" onclick="closeQRModal(event)">
+      <div class="qr-modal-content" onclick="event.stopPropagation()">
+        <div class="qr-modal-title">📱 모바일로 접속하기</div>
+        <div class="qr-code-container">
+          <canvas id="qrCanvas"></canvas>
+        </div>
+        <div id="qrUrl" class="qr-url"></div>
+        <button class="qr-close-btn" onclick="closeQRModal()">닫기</button>
+      </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="{{scriptUri}}"></script>
+  </body>
+</html>
