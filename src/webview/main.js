@@ -1,5 +1,9 @@
 const vscode = acquireVsCodeApi();
 
+// Wake-up 타이머
+let wakeupTimer = null;
+let wakeupStartTime = null;
+
 function startTunnel() {
   const port = document.getElementById("portInput").value;
   const useHttps = document.getElementById("httpsCheckbox").checked;
@@ -7,6 +11,9 @@ function startTunnel() {
   if (!port) {
     return;
   }
+
+  // 로딩 오버레이 표시
+  showWakeupOverlay();
 
   vscode.postMessage({
     type: "startTunnel",
@@ -17,6 +24,45 @@ function startTunnel() {
   // 입력 초기화
   document.getElementById("portInput").value = "";
   document.getElementById("httpsCheckbox").checked = false;
+}
+
+// Wake-up 오버레이 표시
+function showWakeupOverlay() {
+  const overlay = document.getElementById("wakeupOverlay");
+  overlay.classList.add("active");
+
+  // 초기 상태 설정
+  updateWakeupStatus("서버 연결을 시작합니다...", 0);
+
+  // 경과 시간 타이머 시작
+  wakeupStartTime = Date.now();
+  wakeupTimer = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - wakeupStartTime) / 1000);
+    document.getElementById("elapsedTime").textContent = elapsed;
+  }, 1000);
+}
+
+// Wake-up 오버레이 숨기기
+function hideWakeupOverlay() {
+  const overlay = document.getElementById("wakeupOverlay");
+  overlay.classList.remove("active");
+
+  // 타이머 정리
+  if (wakeupTimer) {
+    clearInterval(wakeupTimer);
+    wakeupTimer = null;
+  }
+  wakeupStartTime = null;
+
+  // 초기화
+  updateWakeupStatus("서버 연결을 시작합니다...", 0);
+  document.getElementById("elapsedTime").textContent = "0";
+}
+
+// Wake-up 상태 업데이트
+function updateWakeupStatus(message, progress) {
+  document.getElementById("wakeupStatus").textContent = message;
+  document.getElementById("progressFill").style.width = progress + "%";
 }
 
 function stopTunnel(tunnelId) {
@@ -120,6 +166,21 @@ function clearConsole(tunnelId) {
 // 로그 추가 이벤트 리스너
 window.addEventListener("message", (event) => {
   const message = event.data;
+
+  // Wake-up 진행 상황 업데이트
+  if (message.type === "wakeupProgress") {
+    updateWakeupStatus(message.status, message.progress);
+  }
+
+  // Wake-up 완료
+  if (message.type === "wakeupComplete") {
+    hideWakeupOverlay();
+  }
+
+  // Wake-up 실패
+  if (message.type === "wakeupFailed") {
+    hideWakeupOverlay();
+  }
 
   if (message.type === "logAdded") {
     const tunnelId = message.tunnelId;

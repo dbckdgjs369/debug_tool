@@ -493,3 +493,142 @@ button:active {
   word-break: break-all;
   white-space: pre-wrap;
 }
+
+/* Wake-up 로딩 오버레이 스타일 */
+.wakeup-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  z-index: 2000;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.wakeup-overlay.active {
+  display: flex;
+}
+
+.wakeup-content {
+  background: var(--vscode-editor-background);
+  border: 2px solid var(--vscode-panel-border);
+  border-radius: 12px;
+  padding: 30px;
+  max-width: 400px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  animation: slideUp 0.4s ease-out;
+}
+
+.wakeup-content h3 {
+  margin: 15px 0 10px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+
+.wakeup-content p {
+  margin: 10px 0;
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* 스피너 애니메이션 */
+.spinner {
+  width: 50px;
+  height: 50px;
+  margin: 0 auto 10px;
+  border: 4px solid var(--vscode-panel-border);
+  border-top: 4px solid var(--vscode-button-background);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* 프로그레스 바 */
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--vscode-panel-border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 15px 0;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    var(--vscode-button-background) 0%,
+    var(--vscode-textLink-activeForeground) 100%
+  );
+  width: 0%;
+  transition: width 0.5s ease-out;
+  border-radius: 3px;
+}
+
+/* Wake-up 정보 텍스트 */
+.wakeup-info {
+  font-size: 12px !important;
+  color: var(--vscode-descriptionForeground) !important;
+  margin-top: 10px !important;
+  padding: 8px;
+  background: rgba(255, 204, 0, 0.1);
+  border-left: 3px solid #ffcc00;
+  border-radius: 4px;
+  text-align: left;
+}
+
+/* 경과 시간 */
+.elapsed-time {
+  font-size: 11px !important;
+  color: var(--vscode-descriptionForeground) !important;
+  margin-top: 10px !important;
+  font-family: "Monaco", "Menlo", "Courier New", monospace;
+}
+
+.elapsed-time span {
+  color: var(--vscode-textLink-foreground);
+  font-weight: 600;
+}
+
+/* Wake-up 상태 메시지 */
+#wakeupStatus {
+  font-size: 14px !important;
+  color: var(--vscode-foreground) !important;
+  font-weight: 500;
+  min-height: 20px;
+}

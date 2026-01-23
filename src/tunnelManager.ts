@@ -36,6 +36,12 @@ export class TunnelManager extends EventEmitter {
 
   async startTunnel(port: number, useHttps: boolean = false): Promise<Tunnel> {
     return new Promise((resolve, reject) => {
+      // 초기 상태 emit
+      this.emit("wakeupProgress", {
+        status: "서버 연결 시도 중...",
+        progress: 10,
+      });
+
       const args = [
         this.clientPath,
         port.toString(),
@@ -54,6 +60,7 @@ export class TunnelManager extends EventEmitter {
       let allOutput = ""; // 모든 출력 저장
       let allErrors = ""; // 모든 에러 저장
       let connectionStarted = false;
+      let serverConnected = false;
 
       tunnelProcess.stdout.on("data", (data) => {
         const output = data.toString();
@@ -67,11 +74,20 @@ export class TunnelManager extends EventEmitter {
         ) {
           connectionStarted = true;
           console.log("✅ 터널 클라이언트 초기화 완료");
+          this.emit("wakeupProgress", {
+            status: "터널 클라이언트 초기화 완료",
+            progress: 30,
+          });
         }
 
         // 서버 연결 성공 감지
-        if (output.includes("터널 서버 연결 성공")) {
+        if (output.includes("터널 서버 연결 성공") && !serverConnected) {
+          serverConnected = true;
           console.log("✅ 터널 서버 연결 완료");
+          this.emit("wakeupProgress", {
+            status: "서버 연결 완료! 터널 설정 중...",
+            progress: 60,
+          });
         }
 
         // 터널 ID 추출
@@ -79,6 +95,10 @@ export class TunnelManager extends EventEmitter {
         if (idMatch && !tunnelId) {
           tunnelId = idMatch[1];
           console.log(`✅ 터널 ID 할당됨: ${tunnelId}`);
+          this.emit("wakeupProgress", {
+            status: "터널 ID 생성 완료",
+            progress: 80,
+          });
         }
 
         // URL 추출
@@ -86,6 +106,10 @@ export class TunnelManager extends EventEmitter {
         if (urlMatch && !tunnelUrl) {
           tunnelUrl = urlMatch[1];
           console.log(`✅ 터널 URL 생성됨: ${tunnelUrl}`);
+          this.emit("wakeupProgress", {
+            status: "터널 URL 생성 완료! 🎉",
+            progress: 95,
+          });
         }
 
         // 원격 로그 파싱

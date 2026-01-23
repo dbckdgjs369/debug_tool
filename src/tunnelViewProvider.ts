@@ -14,6 +14,12 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
   ) {
     // 터널 이벤트 리스닝
     this.tunnelManager.on("tunnelStarted", () => {
+      // 터널 시작 완료 - 로딩 UI 숨기기
+      if (this._view) {
+        this._view.webview.postMessage({
+          type: "wakeupComplete",
+        });
+      }
       this.refresh();
     });
 
@@ -36,6 +42,17 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
         this._view.webview.postMessage({
           type: "logsCleared",
           tunnelId: tunnelId,
+        });
+      }
+    });
+
+    // Wake-up 진행 상황 전달
+    this.tunnelManager.on("wakeupProgress", (data: any) => {
+      if (this._view) {
+        this._view.webview.postMessage({
+          type: "wakeupProgress",
+          status: data.status,
+          progress: data.progress,
         });
       }
     });
@@ -89,6 +106,12 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
         `터널이 시작되었습니다: ${tunnel.url}`,
       );
     } catch (error) {
+      // 로딩 UI 숨기기
+      if (this._view) {
+        this._view.webview.postMessage({
+          type: "wakeupFailed",
+        });
+      }
       vscode.window.showErrorMessage(`터널 시작 실패: ${error}`);
     }
   }
