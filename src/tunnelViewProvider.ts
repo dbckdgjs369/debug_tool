@@ -388,7 +388,7 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 8px;
+      margin-bottom: 4px;
     }
 
     .console-title {
@@ -398,17 +398,107 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
       display: flex;
       align-items: center;
       gap: 4px;
+      flex: 1;
     }
 
-    .console-actions {
+    .console-toolbar {
       display: flex;
-      gap: 4px;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
     }
 
-    .console-actions button {
-      padding: 2px 6px;
+    .console-filter-select {
+      background: var(--vscode-dropdown-background);
+      color: var(--vscode-dropdown-foreground);
+      border: 1px solid var(--vscode-dropdown-border);
+      padding: 2px 4px;
+      border-radius: 2px;
+      font-family: var(--vscode-font-family);
       font-size: 10px;
+      cursor: pointer;
+      min-width: 80px;
+    }
+
+    .console-filter-select:focus {
+      outline: 1px solid var(--vscode-focusBorder);
+      outline-offset: -1px;
+    }
+
+    .console-search-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      margin-left: auto;
+    }
+
+    .console-search-input {
+      background: var(--vscode-input-background);
+      color: var(--vscode-input-foreground);
+      border: 1px solid var(--vscode-input-border);
+      padding: 1px 4px;
+      border-radius: 2px;
+      font-family: var(--vscode-font-family);
+      font-size: 10px;
+      width: 100px;
+      transition: width 0.2s;
+    }
+
+    .console-search-input:focus {
+      outline: 1px solid var(--vscode-focusBorder);
+      outline-offset: -1px;
+      width: 150px;
+    }
+
+    .console-search-input::placeholder {
+      color: var(--vscode-descriptionForeground);
+      opacity: 0.6;
+    }
+
+    .icon-btn {
+      background: transparent;
+      color: var(--vscode-foreground);
+      border: none;
+      cursor: pointer;
+      padding: 2px 4px;
+      border-radius: 2px;
+      font-size: 11px;
       min-width: auto;
+      width: auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0.7;
+    }
+
+    .icon-btn:hover {
+      background: var(--vscode-toolbar-hoverBackground);
+      opacity: 1;
+    }
+
+    .icon-btn.active {
+      background: var(--vscode-list-activeSelectionBackground);
+      opacity: 1;
+    }
+
+    .icon-btn.log-filter.active {
+      color: #4ec9b0;
+    }
+
+    .icon-btn.info-filter.active {
+      color: #4b96ff;
+    }
+
+    .icon-btn.warn-filter.active {
+      color: #ffcc00;
+    }
+
+    .icon-btn.error-filter.active {
+      color: #f48771;
+    }
+
+    .console-log-item.hidden {
+      display: none;
     }
 
     .console-content {
@@ -606,13 +696,19 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
                   tunnel.id
                 }">▶</span> <span>원격 콘솔 (${tunnel.logs.length})</span>
               </div>
-              <div class="console-actions">
-                <button class="btn-console" onclick="testLog('${
-                  tunnel.id
-                }', 'log')">Test</button>
-                <button class="btn-console" onclick="clearConsole('${
-                  tunnel.id
-                }')">Clear</button>
+            </div>
+            <div class="console-toolbar">
+              <select id="filter-select-${tunnel.id}" class="console-filter-select" onchange="filterLogsFromSelect('${tunnel.id}')">
+                <option value="all">⚪ ALL</option>
+                <option value="log">🟢 LOG</option>
+                <option value="info">🔵 INFO</option>
+                <option value="warn">🟡 WARN</option>
+                <option value="error">🔴 ERROR</option>
+              </select>
+              <div class="console-search-wrapper">
+                <input type="text" id="search-input-${tunnel.id}" class="console-search-input" placeholder="필터..." oninput="searchLogs('${tunnel.id}')">
+                <button class="icon-btn" onclick="clearSearch('${tunnel.id}')" title="지우기">✕</button>
+                <button class="icon-btn" onclick="clearConsole('${tunnel.id}')" title="콘솔 지우기">🗑️</button>
               </div>
             </div>
             <div id="console-content-${tunnel.id}" class="console-content">
@@ -838,7 +934,8 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
           content.appendChild(logItem);
           
           // 로그 카운트 업데이트
-          const titleSpan = content.previousElementSibling.querySelector('.console-title span:last-child');
+          const panel = content.closest('.console-panel');
+          const titleSpan = panel ? panel.querySelector('.console-title span:last-child') : null;
           if (titleSpan) {
             const currentCount = content.querySelectorAll('.console-log-item').length;
             titleSpan.textContent = \`원격 콘솔 (\${currentCount})\`;
@@ -859,13 +956,121 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
           content.innerHTML = '<div class="console-empty">콘솔 로그가 없습니다</div>';
           
           // 로그 카운트 업데이트
-          const titleSpan = content.previousElementSibling.querySelector('.console-title span:last-child');
+          const panel = content.closest('.console-panel');
+          const titleSpan = panel ? panel.querySelector('.console-title span:last-child') : null;
           if (titleSpan) {
             titleSpan.textContent = '원격 콘솔 (0)';
           }
         }
       }
     });
+
+    // Select에서 필터 함수
+    function filterLogsFromSelect(tunnelId) {
+      const select = document.getElementById(\`filter-select-\${tunnelId}\`);
+      const level = select.value;
+      const content = document.getElementById(\`console-content-\${tunnelId}\`);
+      const logItems = content.querySelectorAll('.console-log-item');
+      
+      let visibleCount = 0;
+      
+      // 로그 아이템 필터링
+      logItems.forEach(item => {
+        if (level === 'all') {
+          item.classList.remove('hidden');
+          visibleCount++;
+        } else {
+          if (item.classList.contains(level)) {
+            item.classList.remove('hidden');
+            visibleCount++;
+          } else {
+            item.classList.add('hidden');
+          }
+        }
+      });
+      
+      // 로그 카운트 업데이트
+      const panel = content.closest('.console-panel');
+      if (panel) {
+        const titleSpan = panel.querySelector('.console-title span:last-child');
+        if (titleSpan) {
+          const totalCount = logItems.length;
+          if (level === 'all') {
+            titleSpan.textContent = \`원격 콘솔 (\${totalCount})\`;
+          } else {
+            titleSpan.textContent = \`원격 콘솔 (\${visibleCount}/\${totalCount})\`;
+          }
+        }
+      }
+      
+      // 검색도 다시 적용
+      searchLogs(tunnelId);
+    }
+
+    // 로그 검색 함수
+    function searchLogs(tunnelId) {
+      const searchInput = document.getElementById(\`search-input-\${tunnelId}\`);
+      const searchTerm = searchInput.value.toLowerCase().trim();
+      const content = document.getElementById(\`console-content-\${tunnelId}\`);
+      const panel = content.closest('.console-panel');
+      const logItems = content.querySelectorAll('.console-log-item');
+      
+      let visibleCount = 0;
+      
+      // select에서 현재 선택된 레벨 가져오기
+      const select = document.getElementById(\`filter-select-\${tunnelId}\`);
+      const activeLevel = select ? select.value : 'all';
+      
+      logItems.forEach(item => {
+        const message = item.querySelector('.console-log-message').textContent.toLowerCase();
+        const level = item.querySelector('.console-log-level').textContent.toLowerCase();
+        
+        // 검색어가 비어있으면 레벨 필터만 적용
+        if (!searchTerm) {
+          if (activeLevel === 'all' || item.classList.contains(activeLevel)) {
+            item.classList.remove('hidden');
+            visibleCount++;
+          } else {
+            item.classList.add('hidden');
+          }
+        } else {
+          // 검색어가 있으면 검색어 + 레벨 필터 모두 적용
+          const matchesSearch = message.includes(searchTerm) || level.includes(searchTerm);
+          const matchesFilter = activeLevel === 'all' || item.classList.contains(activeLevel);
+          
+          if (matchesSearch && matchesFilter) {
+            item.classList.remove('hidden');
+            visibleCount++;
+          } else {
+            item.classList.add('hidden');
+          }
+        }
+      });
+      
+      // 로그 카운트 업데이트
+      if (panel) {
+        const titleSpan = panel.querySelector('.console-title span:last-child');
+        if (titleSpan) {
+          const totalCount = logItems.length;
+          if (searchTerm) {
+            titleSpan.textContent = \`원격 콘솔 (\${visibleCount}/\${totalCount}) 🔍\`;
+          } else {
+            if (activeLevel === 'all') {
+              titleSpan.textContent = \`원격 콘솔 (\${totalCount})\`;
+            } else {
+              titleSpan.textContent = \`원격 콘솔 (\${visibleCount}/\${totalCount})\`;
+            }
+          }
+        }
+      }
+    }
+    
+    // 검색 초기화 함수
+    function clearSearch(tunnelId) {
+      const searchInput = document.getElementById(\`search-input-\${tunnelId}\`);
+      searchInput.value = '';
+      searchLogs(tunnelId);
+    }
 
     // HTML 이스케이프 함수
     function escapeHtml(text) {

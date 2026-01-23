@@ -189,7 +189,15 @@ ws.on("message", async (message) => {
     var tunnelBasename = '';
     var detectedTunnelId = '';
     
-    // 터널 ID 감지
+    // 쿠키에서 터널 ID 읽기 함수
+    function getCookie(name) {
+      var value = '; ' + document.cookie;
+      var parts = value.split('; ' + name + '=');
+      if (parts.length === 2) return parts.pop().split(';').shift();
+      return '';
+    }
+    
+    // 터널 ID 감지 (URL 또는 쿠키에서)
     var tunnelMatch = window.location.pathname.match(/^\\/([a-f0-9]{8})(\\/?.*)?$/);
     if (tunnelMatch) {
       tunnelBasename = '/' + tunnelMatch[1];
@@ -202,6 +210,13 @@ ws.on("message", async (message) => {
       // URL을 앱 경로로 즉시 변경 (React Router가 올바른 경로를 보도록)
       history.replaceState(null, '', appPath);
       console.log('[Tunnel] 경로 정리:', tunnelMatch[0], '→', appPath);
+    } else {
+      // URL에 터널 ID가 없으면 쿠키에서 가져오기
+      detectedTunnelId = getCookie('tunnelId');
+      if (detectedTunnelId) {
+        tunnelBasename = '/' + detectedTunnelId;
+        console.log('[Tunnel] 쿠키에서 복원:', detectedTunnelId);
+      }
     }
     
     // history.pushState 패치 (링크 클릭 시)
