@@ -171,7 +171,7 @@ ws.on("message", async (message) => {
           );
         }
 
-        // HTML 응답의 경우 React Router 자동 패치 스크립트 + 콘솔 캡처 스크립트 추가
+        // HTML 응답의 경우 원격 콘솔 캡처 스크립트만 추가 (URL 조작 제거)
         if (
           response.status === 200 &&
           cleanResponseHeaders["content-type"]?.includes("text/html")
@@ -182,13 +182,8 @@ ws.on("message", async (message) => {
           // </head> 태그 직전에 스크립트 추가
           const script = `
 <script>
-  // React Router BrowserRouter 자동 패치 (프로젝트 수정 불필요)
+  // 원격 콘솔 캡처 (쿠키에서 터널 ID 가져오기)
   (function() {
-    var originalPushState = history.pushState;
-    var originalReplaceState = history.replaceState;
-    var tunnelBasename = '';
-    var detectedTunnelId = '';
-    
     // 쿠키에서 터널 ID 읽기 함수
     function getCookie(name) {
       var value = '; ' + document.cookie;
@@ -197,47 +192,10 @@ ws.on("message", async (message) => {
       return '';
     }
     
-    // 터널 ID 감지 (URL 또는 쿠키에서)
-    var tunnelMatch = window.location.pathname.match(/^\\/([a-f0-9]{8})(\\/?.*)?$/);
-    if (tunnelMatch) {
-      tunnelBasename = '/' + tunnelMatch[1];
-      detectedTunnelId = tunnelMatch[1];
-      console.log('[Tunnel] 감지됨:', tunnelBasename, 'ID:', detectedTunnelId);
-      
-      // 실제 앱 경로 추출
-      var appPath = tunnelMatch[2] || '/';
-      
-      // URL을 앱 경로로 즉시 변경 (React Router가 올바른 경로를 보도록)
-      history.replaceState(null, '', appPath);
-      console.log('[Tunnel] 경로 정리:', tunnelMatch[0], '→', appPath);
-    } else {
-      // URL에 터널 ID가 없으면 쿠키에서 가져오기
-      detectedTunnelId = getCookie('tunnelId');
-      if (detectedTunnelId) {
-        tunnelBasename = '/' + detectedTunnelId;
-        console.log('[Tunnel] 쿠키에서 복원:', detectedTunnelId);
-      }
-    }
+    // 터널 ID 감지 (쿠키에서만)
+    var detectedTunnelId = getCookie('tunnelId');
     
-    // history.pushState 패치 (링크 클릭 시)
-    history.pushState = function(state, title, url) {
-      // 상대 경로를 절대 경로로 변환
-      if (url && !url.startsWith('http') && tunnelBasename) {
-        // /about → /tunnel-id/about
-        url = tunnelBasename + (url.startsWith('/') ? url : '/' + url);
-      }
-      return originalPushState.apply(history, [state, title, url]);
-    };
-    
-    // history.replaceState 패치
-    history.replaceState = function(state, title, url) {
-      if (url && !url.startsWith('http') && tunnelBasename && url !== '/') {
-        url = tunnelBasename + (url.startsWith('/') ? url : '/' + url);
-      }
-      return originalReplaceState.apply(history, [state, title, url]);
-    };
-    
-    // 원격 콘솔 캡처 (자동으로 터널 ID 사용)
+    // 원격 콘솔 캡처
     if (detectedTunnelId) {
       var originalLog = console.log;
       var originalWarn = console.warn;
@@ -282,10 +240,9 @@ ws.on("message", async (message) => {
       };
       
       console.log('[Tunnel] 원격 콘솔 활성화됨 - ID:', detectedTunnelId);
+    } else {
+      console.log('[Tunnel] 터널 ID 없음 - 원격 콘솔 비활성화');
     }
-    
-    // 쿠키 확인 (이미 터널 ID가 저장되어 있음)
-    console.log('[Tunnel] 준비 완료 - React 앱 로드 중...');
   })();
 </script>`;
           responseBody = responseBody.replace("</head>", script + "</head>");

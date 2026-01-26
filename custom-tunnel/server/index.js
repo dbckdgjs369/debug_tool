@@ -205,8 +205,9 @@ app.all("*", (req, res) => {
       `🍪 쿠키 설정: tunnelId=${tunnelId}, path=${req.path}, sameSite=${cookieOptions.sameSite}, secure=${isProduction}`,
     );
 
-    // fullPath는 이미 / 로 설정됨 (React Router가 / 를 인식)
-    // 리다이렉트 없이 바로 처리
+    // URL에서 tunnelID 제거하고 리다이렉트 (쿠키로 처리)
+    console.log(`↪️  리다이렉트: ${fullPath} (tunnelID 제거)`);
+    return res.redirect(302, fullPath);
   } else if (req.cookies.tunnelId) {
     // 쿠키에 터널 ID가 있는 경우: 모든 요청 처리
     tunnelId = req.cookies.tunnelId;
