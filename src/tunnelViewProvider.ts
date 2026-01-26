@@ -72,6 +72,14 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 
+    // 웹뷰 가시성 변경 이벤트 (탭 전환 시)
+    webviewView.onDidChangeVisibility(() => {
+      if (webviewView.visible) {
+        // 웹뷰가 다시 보일 때 현재 상태 복원
+        this.restoreWebviewState();
+      }
+    });
+
     // 메시지 핸들러
     webviewView.webview.onDidReceiveMessage(async (data) => {
       switch (data.type) {
@@ -129,6 +137,23 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
     if (this._view) {
       this._view.webview.html = this._getHtmlForWebview(this._view.webview);
     }
+  }
+
+  private restoreWebviewState() {
+    if (!this._view) {
+      return;
+    }
+
+    const tunnels = this.tunnelManager.getTunnels();
+
+    // 각 터널의 로그를 웹뷰에 전달
+    tunnels.forEach((tunnel) => {
+      this._view!.webview.postMessage({
+        type: "restoreLogs",
+        tunnelId: tunnel.id,
+        logs: tunnel.logs,
+      });
+    });
   }
 
   private escapeHtml(text: string): string {

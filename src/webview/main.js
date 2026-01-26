@@ -212,20 +212,96 @@ window.addEventListener("message", (event) => {
 
       content.appendChild(logItem);
 
-      // 로그 카운트 업데이트
-      const panel = content.closest(".console-panel");
-      const titleSpan = panel
-        ? panel.querySelector(".console-title span:last-child")
-        : null;
-      if (titleSpan) {
-        const currentCount =
-          content.querySelectorAll(".console-log-item").length;
-        titleSpan.textContent = `원격 콘솔 (${currentCount})`;
+      // 현재 필터 상태 가져오기
+      const select = document.getElementById(`filter-select-${tunnelId}`);
+      const searchInput = document.getElementById(`search-input-${tunnelId}`);
+      const activeLevel = select ? select.value : "all";
+      const searchTerm = searchInput
+        ? searchInput.value.toLowerCase().trim()
+        : "";
+
+      // 새로 추가된 로그에 필터 적용
+      const message_text = log.message.toLowerCase();
+      const level_text = log.level.toLowerCase();
+
+      let shouldHide = false;
+
+      // 레벨 필터 체크
+      if (activeLevel !== "all" && log.level !== activeLevel) {
+        shouldHide = true;
       }
+
+      // 검색어 필터 체크
+      if (searchTerm && !shouldHide) {
+        const matchesSearch =
+          message_text.includes(searchTerm) || level_text.includes(searchTerm);
+        if (!matchesSearch) {
+          shouldHide = true;
+        }
+      }
+
+      // 필터에 맞지 않으면 숨김
+      if (shouldHide) {
+        logItem.classList.add("hidden");
+      }
+
+      // 로그 카운트 업데이트
+      updateLogCount(tunnelId);
 
       // 자동 스크롤 (콘솔이 열려있을 때만)
       if (content.classList.contains("expanded")) {
         content.scrollTop = content.scrollHeight;
+      }
+    }
+  }
+
+  if (message.type === "restoreLogs") {
+    const tunnelId = message.tunnelId;
+    const logs = message.logs;
+    const content = document.getElementById(`console-content-${tunnelId}`);
+
+    if (content && logs && logs.length > 0) {
+      // 빈 상태 메시지 제거
+      const emptyState = content.querySelector(".console-empty");
+      if (emptyState) {
+        emptyState.remove();
+      }
+
+      // 기존 로그 제거
+      content.innerHTML = "";
+
+      // 모든 로그 추가
+      logs.forEach((log) => {
+        const logItem = document.createElement("div");
+        logItem.className = `console-log-item ${log.level}`;
+
+        const time = new Date(log.timestamp).toLocaleTimeString("ko-KR", {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+
+        logItem.innerHTML = `
+          <span class="console-log-time">${time}</span>
+          <span class="console-log-level ${log.level}">${log.level.toUpperCase()}</span>
+          <span class="console-log-message">${escapeHtml(log.message)}</span>
+        `;
+
+        content.appendChild(logItem);
+      });
+
+      // 로그 카운트 업데이트
+      updateLogCount(tunnelId);
+
+      // 현재 필터 재적용
+      const select = document.getElementById(`filter-select-${tunnelId}`);
+      if (select && select.value !== "all") {
+        filterLogsFromSelect(tunnelId);
+      }
+
+      const searchInput = document.getElementById(`search-input-${tunnelId}`);
+      if (searchInput && searchInput.value.trim()) {
+        searchLogs(tunnelId);
       }
     }
   }
@@ -361,6 +437,42 @@ function clearSearch(tunnelId) {
   const searchInput = document.getElementById(`search-input-${tunnelId}`);
   searchInput.value = "";
   searchLogs(tunnelId);
+}
+
+// 로그 카운트 업데이트 함수
+function updateLogCount(tunnelId) {
+  const content = document.getElementById(`console-content-${tunnelId}`);
+  if (!content) {
+    return;
+  }
+
+  const panel = content.closest(".console-panel");
+  const titleSpan = panel
+    ? panel.querySelector(".console-title span:last-child")
+    : null;
+  if (!titleSpan) {
+    return;
+  }
+
+  const select = document.getElementById(`filter-select-${tunnelId}`);
+  const searchInput = document.getElementById(`search-input-${tunnelId}`);
+  const activeLevel = select ? select.value : "all";
+  const searchTerm = searchInput ? searchInput.value.trim() : "";
+
+  const logItems = content.querySelectorAll(".console-log-item");
+  const totalCount = logItems.length;
+  const visibleCount = Array.from(logItems).filter(
+    (item) => !item.classList.contains("hidden"),
+  ).length;
+
+  // 카운트 텍스트 결정
+  if (searchTerm) {
+    titleSpan.textContent = `원격 콘솔 (${visibleCount}/${totalCount}) 🔍`;
+  } else if (activeLevel === "all") {
+    titleSpan.textContent = `원격 콘솔 (${totalCount})`;
+  } else {
+    titleSpan.textContent = `원격 콘솔 (${visibleCount}/${totalCount})`;
+  }
 }
 
 // HTML 이스케이프 함수
