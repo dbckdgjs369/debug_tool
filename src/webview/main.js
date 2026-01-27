@@ -4,6 +4,9 @@ const vscode = acquireVsCodeApi();
 let wakeupTimer = null;
 let wakeupStartTime = null;
 
+// 자동 스크롤 상태 추적 (터널 ID별)
+const autoScrollEnabled = new Map();
+
 function startTunnel() {
   const port = document.getElementById("portInput").value;
   const useHttps = document.getElementById("httpsCheckbox").checked;
@@ -137,6 +140,11 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+// 콘솔이 맨 아래에 있는지 확인
+function isScrolledToBottom(element) {
+  return element.scrollHeight - element.scrollTop <= element.clientHeight + 1;
+}
+
 // 콘솔 토글
 function toggleConsole(tunnelId) {
   const content = document.getElementById(`console-content-${tunnelId}`);
@@ -148,10 +156,24 @@ function toggleConsole(tunnelId) {
   } else {
     content.classList.add("expanded");
     icon.textContent = "▼";
-    // 스크롤을 맨 아래로
+    // 자동 스크롤 활성화하고 스크롤을 맨 아래로
+    autoScrollEnabled.set(tunnelId, true);
     setTimeout(() => {
       content.scrollTop = content.scrollHeight;
     }, 50);
+
+    // 스크롤 이벤트 리스너 추가 (한 번만)
+    if (!content.dataset.scrollListenerAdded) {
+      content.dataset.scrollListenerAdded = "true";
+      content.addEventListener("scroll", () => {
+        // 사용자가 수동으로 스크롤 올리면 자동 스크롤 비활성화
+        if (isScrolledToBottom(content)) {
+          autoScrollEnabled.set(tunnelId, true);
+        } else {
+          autoScrollEnabled.set(tunnelId, false);
+        }
+      });
+    }
   }
 }
 
@@ -248,9 +270,17 @@ window.addEventListener("message", (event) => {
       // 로그 카운트 업데이트
       updateLogCount(tunnelId);
 
-      // 자동 스크롤 (콘솔이 열려있을 때만)
+      // 자동 스크롤 (콘솔이 열려있고 자동 스크롤이 활성화된 경우에만)
       if (content.classList.contains("expanded")) {
-        content.scrollTop = content.scrollHeight;
+        // 초기값 설정 (아직 설정되지 않은 경우)
+        if (!autoScrollEnabled.has(tunnelId)) {
+          autoScrollEnabled.set(tunnelId, true);
+        }
+
+        // 자동 스크롤 활성화된 경우에만
+        if (autoScrollEnabled.get(tunnelId)) {
+          content.scrollTop = content.scrollHeight;
+        }
       }
     }
   }
