@@ -394,6 +394,15 @@ button:active {
   gap: 6px;
   font-size: 10px;
   line-height: 1.4;
+  cursor: pointer;
+  transition:
+    background-color 0.2s,
+    transform 0.1s;
+}
+
+.console-log-item:hover {
+  transform: translateX(2px);
+  opacity: 0.9;
 }
 
 .console-log-item.log {
@@ -523,6 +532,31 @@ button:active {
   text-align: center;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   animation: slideUp 0.4s ease-out;
+  position: relative;
+}
+
+.wakeup-close-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  border: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+  transition: all 0.2s;
+}
+
+.wakeup-close-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+  opacity: 1;
 }
 
 .wakeup-content h3 {

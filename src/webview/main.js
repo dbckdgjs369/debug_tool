@@ -62,6 +62,16 @@ function hideWakeupOverlay() {
   document.getElementById("elapsedTime").textContent = "0";
 }
 
+// Wake-up 오버레이 닫기 (사용자가 수동으로 닫을 때)
+function closeWakeupOverlay(event) {
+  const overlay = document.getElementById("wakeupOverlay");
+
+  // 이벤트가 있고 모달 배경을 클릭한 경우나 버튼을 클릭한 경우
+  if (!event || event.target === overlay || event.type === "click") {
+    hideWakeupOverlay();
+  }
+}
+
 // Wake-up 상태 업데이트
 function updateWakeupStatus(message, progress) {
   document.getElementById("wakeupStatus").textContent = message;
@@ -137,6 +147,7 @@ function closeQRModal(event) {
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     closeQRModal();
+    closeWakeupOverlay();
   }
 });
 
@@ -511,3 +522,75 @@ function escapeHtml(text) {
   div.textContent = text;
   return div.innerHTML;
 }
+
+// 콘솔 로그 클릭 시 복사
+document.addEventListener("click", (e) => {
+  const logItem = e.target.closest(".console-log-item");
+  if (logItem) {
+    const messageEl = logItem.querySelector(".console-log-message");
+    if (messageEl) {
+      const text = messageEl.textContent;
+      navigator.clipboard
+        .writeText(text)
+        .then(() => {
+          // 복사 성공 피드백
+          logItem.style.backgroundColor = "rgba(0, 255, 0, 0.1)";
+          setTimeout(() => {
+            logItem.style.backgroundColor = "";
+          }, 200);
+        })
+        .catch((err) => {
+          console.error("복사 실패:", err);
+        });
+    }
+  }
+
+  // 기존 버튼 클릭 처리
+  const target = e.target.closest("[data-action]");
+  if (!target) return;
+
+  const action = target.getAttribute("data-action");
+  const tunnelId = target.getAttribute("data-tunnel-id");
+  const url = target.getAttribute("data-url");
+
+  switch (action) {
+    case "qr":
+      showQRCode(url);
+      break;
+    case "copy":
+      copyUrl(url);
+      break;
+    case "open":
+      openUrl(url);
+      break;
+    case "stop":
+      stopTunnel(tunnelId);
+      break;
+    case "toggle-console":
+      toggleConsole(tunnelId);
+      break;
+    case "clear-search":
+      clearSearch(tunnelId);
+      break;
+    case "clear-console":
+      clearConsole(tunnelId);
+      break;
+  }
+});
+
+// Select와 Input 이벤트 위임
+document.addEventListener("change", (e) => {
+  const target = e.target;
+  if (target.getAttribute("data-action") === "filter-logs") {
+    const tunnelId = target.getAttribute("data-tunnel-id");
+    filterLogsFromSelect(tunnelId);
+  }
+});
+
+document.addEventListener("input", (e) => {
+  const target = e.target;
+  if (target.getAttribute("data-action") === "search-logs") {
+    const tunnelId = target.getAttribute("data-tunnel-id");
+    searchLogs(tunnelId);
+  }
+});

@@ -55,8 +55,19 @@
     </div>
 
     <!-- 서버 Wake-up 로딩 오버레이 -->
-    <div id="wakeupOverlay" class="wakeup-overlay">
-      <div class="wakeup-content">
+    <div
+      id="wakeupOverlay"
+      class="wakeup-overlay"
+      onclick="closeWakeupOverlay(event)"
+    >
+      <div class="wakeup-content" onclick="event.stopPropagation()">
+        <button
+          class="wakeup-close-btn"
+          onclick="closeWakeupOverlay()"
+          title="닫기"
+        >
+          ✕
+        </button>
         <div class="spinner"></div>
         <h3>🚇 터널 연결 중...</h3>
         <p id="wakeupStatus">서버 연결을 시작합니다...</p>
