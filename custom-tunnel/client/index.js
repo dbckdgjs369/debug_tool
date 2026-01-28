@@ -19,7 +19,6 @@ const ws = new WebSocket(tunnelServerUrl);
 
 // 터널 ID 저장 변수
 let tunnelId = null;
-let firstAccessLogged = false; // 첫 접속 플래그
 
 ws.on("open", () => {
   console.log("✅ 터널 서버 연결 성공!");
@@ -41,16 +40,15 @@ ws.on("message", async (message) => {
       console.log(
         `🔍 [REMOTE_LOG] ${JSON.stringify({ level, message, timestamp })}`,
       );
+
+      // 페이지 로드 감지
+      if (message.includes("[PAGE_LOADED]")) {
+        console.log("[FIRST_ACCESS]");
+      }
     } else if (data.type === "request") {
       const { requestId, method, url, headers, body } = data;
 
       console.log(`📥 요청 받음: ${method} ${url}`);
-
-      // 첫 번째 접속 감지 (한 번만 로그)
-      if (!firstAccessLogged) {
-        firstAccessLogged = true;
-        console.log("🌐 [FIRST_ACCESS]");
-      }
 
       try {
         // 불필요한 헤더 제거 (프록시 문제 방지)
@@ -247,6 +245,8 @@ ws.on("message", async (message) => {
       };
       
       console.log('[Tunnel] 원격 콘솔 활성화됨 - ID:', detectedTunnelId);
+      
+      console.log('[PAGE_LOADED]');
     } else {
       console.log('[Tunnel] 터널 ID 없음 - 원격 콘솔 비활성화');
     }
