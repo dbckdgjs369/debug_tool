@@ -202,12 +202,11 @@ app.all("*", (req, res) => {
 
     res.cookie("tunnelId", tunnelId, cookieOptions);
     console.log(
-      `🍪 쿠키 설정: tunnelId=${tunnelId}, path=${req.path}, sameSite=${cookieOptions.sameSite}, secure=${isProduction}`,
+      `🍪 쿠키 설정: tunnelId=${tunnelId}, path=${fullPath}, sameSite=${cookieOptions.sameSite}, secure=${isProduction}`,
     );
 
-    // URL에서 tunnelID 제거하고 리다이렉트 (쿠키로 처리)
-    console.log(`↪️  리다이렉트: ${fullPath} (tunnelID 제거)`);
-    return res.redirect(302, fullPath);
+    // 리다이렉트하지 않고 바로 요청 처리 (무한 루프 방지)
+    console.log(`🔄 터널 ID 경로에서 요청 처리: ${tunnelId} → ${fullPath}`);
   } else if (req.cookies.tunnelId) {
     // 쿠키에 터널 ID가 있는 경우: 모든 요청 처리
     tunnelId = req.cookies.tunnelId;
