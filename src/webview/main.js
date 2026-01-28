@@ -226,6 +226,15 @@ window.addEventListener("message", (event) => {
     hideWakeupOverlay();
   }
 
+  // QR 팝업 자동 닫기 (첫 접속 감지 시)
+  if (message.type === "closeQRModal") {
+    const modal = document.getElementById("qrModal");
+    if (modal.classList.contains("active")) {
+      modal.classList.remove("active");
+      console.log("✅ QR 팝업 자동으로 닫힘 (첫 접속 감지됨)");
+    }
+  }
+
   if (message.type === "logAdded") {
     const tunnelId = message.tunnelId;
     const log = message.log;

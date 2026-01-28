@@ -131,6 +131,12 @@ export class TunnelManager extends EventEmitter {
           }
         }
 
+        // 첫 접속 감지
+        if (output.includes("🌐 [FIRST_ACCESS]") && tunnelId) {
+          console.log(`✅ 첫 접속 감지됨: ${tunnelId}`);
+          this.emit("firstAccess", tunnelId);
+        }
+
         // 둘 다 추출되면 터널 등록
         if (tunnelId && tunnelUrl && !resolved) {
           const tunnel: Tunnel = {

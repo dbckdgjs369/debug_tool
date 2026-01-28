@@ -19,6 +19,7 @@ const ws = new WebSocket(tunnelServerUrl);
 
 // 터널 ID 저장 변수
 let tunnelId = null;
+let firstAccessLogged = false; // 첫 접속 플래그
 
 ws.on("open", () => {
   console.log("✅ 터널 서버 연결 성공!");
@@ -44,6 +45,12 @@ ws.on("message", async (message) => {
       const { requestId, method, url, headers, body } = data;
 
       console.log(`📥 요청 받음: ${method} ${url}`);
+
+      // 첫 번째 접속 감지 (한 번만 로그)
+      if (!firstAccessLogged) {
+        firstAccessLogged = true;
+        console.log("🌐 [FIRST_ACCESS]");
+      }
 
       try {
         // 불필요한 헤더 제거 (프록시 문제 방지)

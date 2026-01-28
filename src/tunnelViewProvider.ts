@@ -56,6 +56,15 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
         });
       }
     });
+
+    // 첫 접속 감지 시 QR 팝업 자동 닫기
+    this.tunnelManager.on("firstAccess", (tunnelId: string) => {
+      if (this._view) {
+        this._view.webview.postMessage({
+          type: "closeQRModal",
+        });
+      }
+    });
   }
 
   public resolveWebviewView(
