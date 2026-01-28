@@ -42,7 +42,7 @@ ws.on("message", async (message) => {
       );
 
       // 페이지 로드 감지
-      if (message.includes("[PAGE_LOADED]")) {
+      if (message.includes("PAGE_LOADED")) {
         console.log("[FIRST_ACCESS]");
       }
     } else if (data.type === "request") {
@@ -184,10 +184,15 @@ ws.on("message", async (message) => {
           // 터널 ID 가져오기
           const tunnelIdFromClient = tunnelId || "unknown";
 
-          // </head> 태그 직전에 스크립트 추가
+          // </head> 태그 직전에 스크립트 추가 (타임스탬프로 캐싱 방지)
+          const timestamp = Date.now();
           const script = `
-<script>
-  // 원격 콘솔 캡처 (쿠키에서 터널 ID 가져오기)
+<!-- Tunnel Script v${timestamp} -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<script data-tunnel-script="${timestamp}">
+  // 원격 콘솔 캡처 (쿠키에서 터널 ID 가져오기) - v${timestamp}
   (function() {
     // 쿠키에서 터널 ID 읽기 함수
     function getCookie(name) {
@@ -246,7 +251,7 @@ ws.on("message", async (message) => {
       
       console.log('[Tunnel] 원격 콘솔 활성화됨 - ID:', detectedTunnelId);
       
-      console.log('[PAGE_LOADED]');
+      console.log('[Tunnel] PAGE_LOADED');
     } else {
       console.log('[Tunnel] 터널 ID 없음 - 원격 콘솔 비활성화');
     }

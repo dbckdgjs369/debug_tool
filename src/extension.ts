@@ -5,7 +5,7 @@ import { TunnelManager } from "./tunnelManager";
 let tunnelManager: TunnelManager;
 
 export function activate(context: vscode.ExtensionContext) {
-  console.log("Custom Tunnel extension is now active!");
+  console.log("[Tunnel] Custom Tunnel extension is now active!");
 
   // 터널 매니저 초기화
   tunnelManager = new TunnelManager();
@@ -16,8 +16,8 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       TunnelViewProvider.viewType,
-      provider
-    )
+      provider,
+    ),
   );
 
   // 명령어 등록
@@ -39,13 +39,13 @@ export function activate(context: vscode.ExtensionContext) {
         try {
           await tunnelManager.startTunnel(parseInt(port));
           vscode.window.showInformationMessage(
-            `터널이 시작되었습니다: 포트 ${port}`
+            `터널이 시작되었습니다: 포트 ${port}`,
           );
         } catch (error) {
           vscode.window.showErrorMessage(`터널 시작 실패: ${error}`);
         }
       }
-    })
+    }),
   );
 
   context.subscriptions.push(
@@ -56,26 +56,26 @@ export function activate(context: vscode.ExtensionContext) {
       } catch (error) {
         vscode.window.showErrorMessage(`터널 중지 실패: ${error}`);
       }
-    })
+    }),
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand("tunnel.refresh", () => {
       provider.refresh();
-    })
+    }),
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand("tunnel.copyUrl", (url: string) => {
       vscode.env.clipboard.writeText(url);
       vscode.window.showInformationMessage("URL이 클립보드에 복사되었습니다");
-    })
+    }),
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand("tunnel.openUrl", (url: string) => {
       vscode.env.openExternal(vscode.Uri.parse(url));
-    })
+    }),
   );
 
   // 확장이 비활성화될 때 정리

@@ -67,7 +67,7 @@ export class TunnelManager extends EventEmitter {
       tunnelProcess.stdout.on("data", (data) => {
         const output = data.toString();
         allOutput += output;
-        console.log(`Tunnel output: ${output}`);
+        console.log(`[Tunnel] Tunnel output: ${output}`);
 
         // 연결 시작 감지
         if (
@@ -75,7 +75,7 @@ export class TunnelManager extends EventEmitter {
           output.includes("로컬 서버")
         ) {
           connectionStarted = true;
-          console.log("✅ 터널 클라이언트 초기화 완료");
+          console.log("[Tunnel] ✅ 터널 클라이언트 초기화 완료");
           this.emit("wakeupProgress", {
             status: "터널 클라이언트 초기화 완료",
             progress: 30,
@@ -85,7 +85,7 @@ export class TunnelManager extends EventEmitter {
         // 서버 연결 성공 감지
         if (output.includes("터널 서버 연결 성공") && !serverConnected) {
           serverConnected = true;
-          console.log("✅ 터널 서버 연결 완료");
+          console.log("[Tunnel] ✅ 터널 서버 연결 완료");
           this.emit("wakeupProgress", {
             status: "서버 연결 완료! 터널 설정 중...",
             progress: 60,
@@ -96,7 +96,7 @@ export class TunnelManager extends EventEmitter {
         const idMatch = output.match(/🔑 터널 ID: ([a-f0-9]{8})/);
         if (idMatch && !tunnelId) {
           tunnelId = idMatch[1];
-          console.log(`✅ 터널 ID 할당됨: ${tunnelId}`);
+          console.log(`[Tunnel] ✅ 터널 ID 할당됨: ${tunnelId}`);
           this.emit("wakeupProgress", {
             status: "터널 ID 생성 완료",
             progress: 80,
@@ -107,7 +107,7 @@ export class TunnelManager extends EventEmitter {
         const urlMatch = output.match(/📎 터널 URL: (https:\/\/[^\s]+)/);
         if (urlMatch && !tunnelUrl) {
           tunnelUrl = urlMatch[1];
-          console.log(`✅ 터널 URL 생성됨: ${tunnelUrl}`);
+          console.log(`[Tunnel] ✅ 터널 URL 생성됨: ${tunnelUrl}`);
           this.emit("wakeupProgress", {
             status: "터널 URL 생성 완료! 🎉",
             progress: 95,
@@ -127,13 +127,13 @@ export class TunnelManager extends EventEmitter {
             };
             this.addLog(tunnelId, consoleLog);
           } catch (error) {
-            console.error("Failed to parse remote log:", error);
+            console.error("[Tunnel] Failed to parse remote log:", error);
           }
         }
 
         // 첫 접속 감지
-        if (output.includes("🌐 [FIRST_ACCESS]") && tunnelId) {
-          console.log(`✅ 첫 접속 감지됨: ${tunnelId}`);
+        if (output.includes("[FIRST_ACCESS]") && tunnelId) {
+          console.log(`[Tunnel] ✅ 첫 접속 감지됨: ${tunnelId}`);
           this.emit("firstAccess", tunnelId);
         }
 
@@ -153,7 +153,7 @@ export class TunnelManager extends EventEmitter {
           this.pendingTunnelProcess = null; // 생성 완료
           this.emit("tunnelStarted", tunnel);
           resolved = true;
-          console.log(`✅ 터널 시작 완료: ${tunnelId}`);
+          console.log(`[Tunnel] ✅ 터널 시작 완료: ${tunnelId}`);
           resolve(tunnel);
         }
       });
@@ -161,11 +161,11 @@ export class TunnelManager extends EventEmitter {
       tunnelProcess.stderr.on("data", (data) => {
         const error = data.toString();
         allErrors += error;
-        console.error(`Tunnel error: ${error}`);
+        console.error(`[Tunnel] Tunnel error: ${error}`);
       });
 
       tunnelProcess.on("close", (code) => {
-        console.log(`Tunnel process exited with code ${code}`);
+        console.log(`[Tunnel] Tunnel process exited with code ${code}`);
         if (tunnelId) {
           this.activeTunnels.delete(tunnelId);
           this.emit("tunnelStopped", tunnelId);
@@ -276,7 +276,7 @@ export class TunnelManager extends EventEmitter {
   // 터널 생성 취소
   cancelPendingTunnel(): void {
     if (this.pendingTunnelProcess) {
-      console.log("🚫 터널 생성 요청 취소됨");
+      console.log("[Tunnel] 🚫 터널 생성 요청 취소됨");
       this.pendingTunnelProcess.kill();
       this.pendingTunnelProcess = null;
       this.emit("tunnelCancelled");
