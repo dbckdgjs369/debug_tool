@@ -89,6 +89,9 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
         case "stopTunnel":
           this.handleStopTunnel(data.tunnelId);
           break;
+        case "cancelTunnel":
+          this.tunnelManager.cancelPendingTunnel();
+          break;
         case "copyUrl":
           vscode.env.clipboard.writeText(data.url);
           vscode.window.showInformationMessage("URL이 복사되었습니다");

@@ -68,6 +68,10 @@ function closeWakeupOverlay(event) {
 
   // 이벤트가 있고 모달 배경을 클릭한 경우나 버튼을 클릭한 경우
   if (!event || event.target === overlay || event.type === "click") {
+    // 터널 생성 중이면 취소 메시지 전송
+    vscode.postMessage({
+      type: "cancelTunnel",
+    });
     hideWakeupOverlay();
   }
 }
@@ -147,6 +151,13 @@ function closeQRModal(event) {
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     closeQRModal();
+    // ESC 키로 팝업 닫을 때도 터널 생성 취소
+    const overlay = document.getElementById("wakeupOverlay");
+    if (overlay.classList.contains("active")) {
+      vscode.postMessage({
+        type: "cancelTunnel",
+      });
+    }
     closeWakeupOverlay();
   }
 });

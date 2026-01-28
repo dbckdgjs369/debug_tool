@@ -25,6 +25,7 @@ export class TunnelManager extends EventEmitter {
   private clientPath: string;
   private serverUrl: string;
   private maxLogsPerTunnel: number = 500; // 터널당 최대 로그 개수
+  private pendingTunnelProcess: ChildProcess | null = null; // 생성 중인 터널 프로세스
 
   constructor() {
     super();
@@ -53,6 +54,7 @@ export class TunnelManager extends EventEmitter {
       }
 
       const tunnelProcess = spawn("node", args);
+      this.pendingTunnelProcess = tunnelProcess; // 생성 중인 프로세스 추적
 
       let tunnelId: string | null = null;
       let tunnelUrl: string | null = null;
@@ -142,6 +144,7 @@ export class TunnelManager extends EventEmitter {
           };
 
           this.activeTunnels.set(tunnelId, tunnel);
+          this.pendingTunnelProcess = null; // 생성 완료
           this.emit("tunnelStarted", tunnel);
           resolved = true;
           console.log(`✅ 터널 시작 완료: ${tunnelId}`);
@@ -161,11 +164,15 @@ export class TunnelManager extends EventEmitter {
           this.activeTunnels.delete(tunnelId);
           this.emit("tunnelStopped", tunnelId);
         }
+        if (this.pendingTunnelProcess === tunnelProcess) {
+          this.pendingTunnelProcess = null;
+        }
       });
 
       tunnelProcess.on("error", (error) => {
         if (!resolved) {
           resolved = true;
+          this.pendingTunnelProcess = null;
           reject(new Error(`Process error: ${error.message}`));
         }
       });
@@ -175,6 +182,7 @@ export class TunnelManager extends EventEmitter {
         if (!resolved) {
           tunnelProcess.kill();
           resolved = true;
+          this.pendingTunnelProcess = null;
 
           // 상세한 에러 메시지 생성
           let errorMessage = "Tunnel failed to start within 60 seconds.\n\n";
@@ -259,7 +267,23 @@ export class TunnelManager extends EventEmitter {
     return this.activeTunnels.get(tunnelId);
   }
 
+  // 터널 생성 취소
+  cancelPendingTunnel(): void {
+    if (this.pendingTunnelProcess) {
+      console.log("🚫 터널 생성 요청 취소됨");
+      this.pendingTunnelProcess.kill();
+      this.pendingTunnelProcess = null;
+      this.emit("tunnelCancelled");
+    }
+  }
+
   dispose(): void {
+    // 생성 중인 터널 취소
+    if (this.pendingTunnelProcess) {
+      this.pendingTunnelProcess.kill();
+      this.pendingTunnelProcess = null;
+    }
+
     // 모든 터널 중지
     for (const [tunnelId, tunnel] of this.activeTunnels) {
       if (tunnel.process) {
