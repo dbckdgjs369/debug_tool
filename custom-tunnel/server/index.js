@@ -191,22 +191,29 @@ app.all("*", (req, res) => {
     tunnelId = pathMatch[1];
     fullPath = pathMatch[2] || "/";
 
-    // 쿠키에 터널 ID 저장 (크로스 도메인 지원)
+    // 쿠키 설정을 더 관대하게 (HTTPS 없어도 동작하도록)
     const cookieOptions = {
-      httpOnly: false, // 클라이언트 JavaScript에서도 접근 가능하도록
+      httpOnly: false,
       path: "/",
-      sameSite: isProduction ? "none" : "lax", // 프로덕션: none, 로컬: lax
-      secure: isProduction, // HTTPS에서만 전송 (프로덕션)
-      maxAge: 24 * 60 * 60 * 1000, // 24시간
+      sameSite: "lax", // none 대신 lax 사용 (크로스 도메인 포기하지만 안정적)
+      secure: false, // HTTPS 없어도 동작하도록
+      maxAge: 24 * 60 * 60 * 1000,
     };
 
     res.cookie("tunnelId", tunnelId, cookieOptions);
     console.log(
-      `🍪 쿠키 설정: tunnelId=${tunnelId}, path=${fullPath}, sameSite=${cookieOptions.sameSite}, secure=${isProduction}`,
+      `🍪 쿠키 설정: tunnelId=${tunnelId}, 리다이렉트 대상=${fullPath}`,
     );
 
-    // 리다이렉트하지 않고 바로 요청 처리 (무한 루프 방지)
-    console.log(`🔄 터널 ID 경로에서 요청 처리: ${tunnelId} → ${fullPath}`);
+    // 리다이렉트 (SPA 라우팅 문제 해결)
+    // redirected 플래그로 무한 루프 방지
+    if (!req.query.redirected) {
+      const redirectUrl = `${fullPath}${fullPath.includes("?") ? "&" : "?"}redirected=1`;
+      console.log(`↪️  리다이렉트: ${redirectUrl}`);
+      return res.redirect(302, redirectUrl);
+    }
+    // 이미 리다이렉트된 요청이면 처리 진행
+    console.log(`🔄 리다이렉트된 요청 처리: ${tunnelId} → ${fullPath}`);
   } else if (req.cookies.tunnelId) {
     // 쿠키에 터널 ID가 있는 경우: 모든 요청 처리
     tunnelId = req.cookies.tunnelId;
