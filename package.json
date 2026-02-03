@@ -4,6 +4,15 @@
   "description": "로컬 개발 서버를 공개 URL로 공유하고, 실시간 콘솔 모니터링과 QR 코드 생성으로 쉽게 테스트하세요",
   "version": "1.0.0",
   "publisher": "dbckdgjs369",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dbckdgjs369/debug_tool.git"
+  },
+  "homepage": "https://github.com/dbckdgjs369/debug_tool#readme",
+  "bugs": {
+    "url": "https://github.com/dbckdgjs369/debug_tool/issues"
+  },
+  "license": "MIT",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -76,13 +85,14 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
+    "vscode:prepublish": "echo 'Skipping prepublish - already compiled'",
+    "compile": "node scripts/build-config.js && tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "node ./out/test/runTest.js",
-    "package": "yes | npx @vscode/vsce package --allow-missing-repository"
+    "package": "npm run compile && yes | npx @vscode/vsce package --allow-missing-repository",
+    "package:dev": "TUNNEL_ENV=development npm run compile && yes | npx @vscode/vsce package --allow-missing-repository --out custom-tunnel-dev.vsix"
   },
   "devDependencies": {
     "@types/node": "16.x",

@@ -2,6 +2,7 @@ import { spawn, ChildProcess } from "child_process";
 import * as path from "path";
 import { EventEmitter } from "events";
 import axios from "axios";
+import { TUNNEL_SERVER_URL, TUNNEL_ENV } from "./config";
 
 export interface ConsoleLog {
   timestamp: Date;
@@ -31,8 +32,9 @@ export class TunnelManager extends EventEmitter {
     super();
     // client/index.js 경로
     this.clientPath = path.join(__dirname, "../custom-tunnel/client/index.js");
-    // 터널 서버 URL
-    this.serverUrl = "https://debug-tool.onrender.com";
+    // 터널 서버 URL (환경에 따라 자동 설정)
+    this.serverUrl = TUNNEL_SERVER_URL;
+    console.log(`[Tunnel] 환경: ${TUNNEL_ENV}, 서버: ${this.serverUrl}`);
   }
 
   async startTunnel(port: number, useHttps: boolean = false): Promise<Tunnel> {
@@ -46,7 +48,9 @@ export class TunnelManager extends EventEmitter {
       const args = [
         this.clientPath,
         port.toString(),
-        "wss://debug-tool.onrender.com",
+        this.serverUrl
+          .replace("https://", "wss://")
+          .replace("http://", "ws://"),
       ];
 
       if (useHttps) {
