@@ -4,6 +4,15 @@
   "description": "로컬 개발 서버를 공개 URL로 공유하고, 실시간 콘솔 모니터링과 QR 코드 생성으로 쉽게 테스트하세요",
   "version": "1.0.0",
   "publisher": "dbckdgjs369",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dbckdgjs369/debug_tool.git"
+  },
+  "homepage": "https://github.com/dbckdgjs369/debug_tool#readme",
+  "bugs": {
+    "url": "https://github.com/dbckdgjs369/debug_tool/issues"
+  },
+  "license": "MIT",
   "engines": {
     "vscode": "^1.74.0"
   },

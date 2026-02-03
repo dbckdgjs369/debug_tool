@@ -189,7 +189,13 @@ app.all("*", (req, res) => {
   if (pathMatch) {
     // URL에 터널 ID가 있는 경우: /abc12345/path
     tunnelId = pathMatch[1];
-    fullPath = pathMatch[2] || "/";
+    const pathWithoutTunnelId = pathMatch[2] || "/";
+
+    // 쿼리 파라미터 추출 (req.url에서 가져옴)
+    const queryString = req.url.includes("?")
+      ? req.url.substring(req.url.indexOf("?"))
+      : "";
+    fullPath = pathWithoutTunnelId + queryString;
 
     // 쿠키에 터널 ID 저장 (크로스 도메인 지원)
     const cookieOptions = {
@@ -202,21 +208,23 @@ app.all("*", (req, res) => {
 
     res.cookie("tunnelId", tunnelId, cookieOptions);
     console.log(
-      `🍪 쿠키 설정: tunnelId=${tunnelId}, path=${req.path}, sameSite=${cookieOptions.sameSite}, secure=${isProduction}`,
+      `🍪 쿠키 설정: tunnelId=${tunnelId}, path=${req.url}, sameSite=${cookieOptions.sameSite}, secure=${isProduction}`,
     );
 
     // URL에서 tunnelID 제거하고 리다이렉트 (쿠키로 처리)
-    console.log(`↪️  리다이렉트: ${fullPath} (tunnelID 제거)`);
+    console.log(
+      `↪️  리다이렉트: ${fullPath} (tunnelID 제거, 쿼리 파라미터 유지)`,
+    );
     return res.redirect(302, fullPath);
   } else if (req.cookies.tunnelId) {
     // 쿠키에 터널 ID가 있는 경우: 모든 요청 처리
     tunnelId = req.cookies.tunnelId;
-    fullPath = req.path;
+    fullPath = req.url; // 쿼리 파라미터 포함
     console.log(`🍪 쿠키에서 터널 ID 가져옴: ${tunnelId}, path=${fullPath}`);
   } else if (req.query.tunnelId) {
     // Query parameter에서 터널 ID 가져오기 (fallback)
     tunnelId = req.query.tunnelId;
-    fullPath = req.path;
+    fullPath = req.url; // 쿼리 파라미터 포함
     console.log(
       `🔗 Query parameter에서 터널 ID 가져옴: ${tunnelId}, path=${fullPath}`,
     );
@@ -235,7 +243,7 @@ app.all("*", (req, res) => {
     const refererMatch = req.headers.referer.match(/\/([a-f0-9]{8})(\/|$)/);
     if (refererMatch) {
       tunnelId = refererMatch[1];
-      fullPath = req.path;
+      fullPath = req.url; // 쿼리 파라미터 포함
       console.log(
         `🔗 Referer 헤더에서 터널 ID 추출: ${tunnelId}, path=${fullPath}, referer=${req.headers.referer}`,
       );

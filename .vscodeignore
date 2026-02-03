@@ -1,0 +1,19 @@
+# 개발 도구 및 설정
+.vscode/**
+.gitignore
+.git
+
+# 문서 및 가이드 (README.md는 마켓플레이스에 필요하므로 유지)
+ARCHITECTURE.md
+
+# 빌드 결과물
+*.vsix
+
+# 테스트 관련
+**/.eslintrc.json
+**/test/**
+**/tests/**
+
+# 기타
+**/.DS_Store
+**/node_modules/**/.bin/**
