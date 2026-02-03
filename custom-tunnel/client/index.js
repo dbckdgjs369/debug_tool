@@ -8,11 +8,17 @@ const localPort = process.argv[2] || 3000;
 const tunnelServerUrl = process.argv[3] || "ws://localhost:8080";
 const useHttps = process.argv[4] === "https" || process.argv[4] === "true";
 
+// WebSocket URL을 HTTP URL로 변환 (로그 전송용)
+const tunnelServerHttpUrl = tunnelServerUrl
+  .replace("wss://", "https://")
+  .replace("ws://", "http://");
+
 console.log(`🔌 터널 클라이언트 시작...`);
 console.log(
   `📍 로컬 서버: ${useHttps ? "https" : "http"}://localhost:${localPort}`,
 );
 console.log(`🌐 터널 서버: ${tunnelServerUrl}`);
+console.log(`📡 로그 서버: ${tunnelServerHttpUrl}`);
 
 // 터널 서버에 연결
 const ws = new WebSocket(tunnelServerUrl);
@@ -98,20 +104,103 @@ ws.on("message", async (message) => {
 
         // Content-Type에 따라 응답 데이터 처리
         const contentType = response.headers["content-type"] || "";
+
+        // 파일 확장자 기반으로 Content-Type 수정
+        let correctedContentType = contentType;
+
+        // 쿼리 파라미터 추출
+        const [urlPath, queryString] = url.split("?");
+
+        // Vite/Webpack 특수 쿼리 파라미터 체크 (?import, ?url, ?raw, ?react 등)
+        // 이런 경우 빌드 도구가 파일을 변환하므로 JavaScript로 처리
+        const hasSpecialQuery =
+          queryString &&
+          (queryString.includes("import") ||
+            queryString.includes("url") ||
+            queryString.includes("raw") ||
+            queryString.includes("inline") ||
+            queryString.includes("worker") ||
+            queryString.includes("react")); // SVG를 React 컴포넌트로 변환
+
+        // 특수 쿼리가 있으면 JavaScript로 강제 변환
+        if (hasSpecialQuery) {
+          // Vite 등이 파일을 JavaScript 모듈로 변환함
+          // 예: test.jpeg?import
+          correctedContentType = "application/javascript";
+        }
+        // 로컬 서버(Vite)가 이미 JavaScript를 반환한 경우
+        else if (
+          contentType &&
+          (contentType.includes("application/javascript") ||
+            contentType.includes("text/javascript") ||
+            contentType.includes("application/typescript") ||
+            contentType.includes("text/typescript"))
+        ) {
+          // 로컬 서버가 이미 올바르게 처리했으므로 그대로 사용
+          correctedContentType = contentType;
+        }
+        // 특수 쿼리가 없는 경우에만 확장자 기반 수정
+        else {
+          // SVG, 이미지, 폰트는 항상 강제 수정 (로컬 서버가 잘못된 타입을 반환하는 경우가 많음)
+          if (urlPath.endsWith(".svg")) {
+            correctedContentType = "image/svg+xml";
+          } else if (urlPath.endsWith(".png")) {
+            correctedContentType = "image/png";
+          } else if (urlPath.endsWith(".jpg") || urlPath.endsWith(".jpeg")) {
+            correctedContentType = "image/jpeg";
+          } else if (urlPath.endsWith(".gif")) {
+            correctedContentType = "image/gif";
+          } else if (urlPath.endsWith(".webp")) {
+            correctedContentType = "image/webp";
+          } else if (urlPath.endsWith(".ico")) {
+            correctedContentType = "image/x-icon";
+          } else if (urlPath.endsWith(".woff") || urlPath.endsWith(".woff2")) {
+            correctedContentType = "font/woff2";
+          } else if (urlPath.endsWith(".ttf")) {
+            correctedContentType = "font/ttf";
+          }
+          // JavaScript/CSS/JSON은 Content-Type이 비어있거나 잘못된 경우에만 수정
+          else if (
+            !contentType ||
+            contentType === "application/octet-stream" ||
+            contentType === "text/html"
+          ) {
+            if (urlPath.endsWith(".js") || urlPath.endsWith(".mjs")) {
+              correctedContentType = "application/javascript";
+            } else if (urlPath.endsWith(".jsx")) {
+              correctedContentType = "text/javascript";
+            } else if (urlPath.endsWith(".ts")) {
+              correctedContentType = "application/typescript";
+            } else if (urlPath.endsWith(".tsx")) {
+              correctedContentType = "text/typescript";
+            } else if (urlPath.endsWith(".css")) {
+              correctedContentType = "text/css";
+            } else if (urlPath.endsWith(".json")) {
+              correctedContentType = "application/json";
+            }
+          }
+        }
+
         const isBinary =
-          contentType.includes("image/") ||
-          contentType.includes("video/") ||
-          contentType.includes("audio/") ||
-          contentType.includes("application/pdf") ||
-          contentType.includes("application/zip") ||
-          contentType.includes("application/octet-stream") ||
-          contentType.includes("font/");
+          correctedContentType.includes("image/") ||
+          correctedContentType.includes("video/") ||
+          correctedContentType.includes("audio/") ||
+          correctedContentType.includes("application/pdf") ||
+          correctedContentType.includes("application/zip") ||
+          correctedContentType.includes("application/octet-stream") ||
+          correctedContentType.includes("font/") ||
+          correctedContentType.includes("application/wasm");
+
+        // SVG는 텍스트 기반이지만 이미지로 처리 (Content-Type 보존)
+        const isSvg =
+          correctedContentType.includes("image/svg+xml") ||
+          correctedContentType.includes("svg");
 
         let responseBody;
         let isBase64 = false;
 
-        if (isBinary) {
-          // 바이너리 데이터는 Base64로 인코딩
+        if (isBinary || isSvg) {
+          // 바이너리 데이터 및 SVG는 Base64로 인코딩 (Content-Type 보존을 위해)
           if (Buffer.isBuffer(response.data)) {
             responseBody = response.data.toString("base64");
             isBase64 = true;
@@ -139,6 +228,12 @@ ws.on("message", async (message) => {
 
         // 응답 헤더 정리 (프록시 문제 방지)
         const cleanResponseHeaders = { ...response.headers };
+
+        // Content-Type 수정 적용
+        if (correctedContentType !== contentType) {
+          cleanResponseHeaders["content-type"] = correctedContentType;
+        }
+
         delete cleanResponseHeaders["transfer-encoding"];
         delete cleanResponseHeaders["connection"];
         delete cleanResponseHeaders["content-encoding"]; // gzip 디코딩 오류 방지
@@ -176,10 +271,12 @@ ws.on("message", async (message) => {
           );
         }
 
-        // HTML 응답의 경우 원격 콘솔 캡처 스크립트만 추가 (URL 조작 제거)
+        // HTML 응답의 경우에만 원격 콘솔 캡처 스크립트 추가 (SVG 제외)
         if (
           response.status === 200 &&
-          cleanResponseHeaders["content-type"]?.includes("text/html")
+          cleanResponseHeaders["content-type"]?.includes("text/html") &&
+          !isSvg &&
+          !isBase64
         ) {
           // 터널 ID 가져오기
           const tunnelIdFromClient = tunnelId || "unknown";
@@ -221,7 +318,7 @@ ws.on("message", async (message) => {
           return String(arg);
         }).join(' ');
         
-        fetch('https://debug-tool.onrender.com/log', {
+        fetch('${tunnelServerHttpUrl}/log', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 

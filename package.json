@@ -85,9 +85,8 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "precompile": "node scripts/build-config.js",
-    "compile": "tsc -p ./",
+    "vscode:prepublish": "echo 'Skipping prepublish - already compiled'",
+    "compile": "node scripts/build-config.js && tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
