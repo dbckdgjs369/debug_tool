@@ -1,7 +1,6 @@
 import { spawn, ChildProcess } from "child_process";
 import * as path from "path";
 import { EventEmitter } from "events";
-import axios from "axios";
 import { TUNNEL_SERVER_URL, TUNNEL_ENV } from "./config";
 
 export interface ConsoleLog {
@@ -307,7 +306,7 @@ export class TunnelManager extends EventEmitter {
     }
 
     // 모든 터널 중지
-    for (const [tunnelId, tunnel] of this.activeTunnels) {
+    for (const tunnel of this.activeTunnels.values()) {
       if (tunnel.process) {
         tunnel.process.kill();
       }
