@@ -57,7 +57,10 @@ export class TunnelManager extends EventEmitter {
         args.push("https");
       }
 
-      const tunnelProcess = spawn("node", args);
+      // VS Code 내장 Electron(Node)을 재사용 — 사용자 PC에 Node 미설치/PATH 누락(nvm 등)이어도 동작
+      const tunnelProcess = spawn(process.execPath, args, {
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+      });
       this.pendingTunnelProcess = tunnelProcess; // 생성 중인 프로세스 추적
 
       let tunnelId: string | null = null;
@@ -179,11 +182,20 @@ export class TunnelManager extends EventEmitter {
         }
       });
 
-      tunnelProcess.on("error", (error) => {
+      tunnelProcess.on("error", (error: Error & { code?: string }) => {
         if (!resolved) {
           resolved = true;
           this.pendingTunnelProcess = null;
-          reject(new Error(`Process error: ${error.message}`));
+          if (error.code === "ENOENT") {
+            reject(
+              new Error(
+                "Node 런타임 실행 실패 (ENOENT). VS Code를 완전히 종료 후 재시작해 주세요. " +
+                  "문제가 지속되면 확장을 재설치하거나 개발자에게 문의 바랍니다."
+              )
+            );
+          } else {
+            reject(new Error(`Process error: ${error.message}`));
+          }
         }
       });
 
