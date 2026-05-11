@@ -49,6 +49,23 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand("tunnel.stop", async (tunnelId: string) => {
+      try {
+        await tunnelManager.stopTunnel(tunnelId);
+        vscode.window.showInformationMessage("터널이 중지되었습니다");
+      } catch (error) {
+        vscode.window.showErrorMessage(`터널 중지 실패: ${error}`);
+      }
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("tunnel.refresh", () => {
+      provider.refresh();
+    }),
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand("tunnel.copyUrl", (url: string) => {
       vscode.env.clipboard.writeText(url);
       vscode.window.showInformationMessage("URL이 클립보드에 복사되었습니다");
