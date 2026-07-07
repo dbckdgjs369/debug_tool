@@ -2,6 +2,8 @@
 
 로컬 개발 서버를 외부에서 접근 가능한 공개 URL로 공유할 수 있는 VSCode 확장 프로그램입니다.
 
+<img src="images/screenshots/00-overview.png" alt="VSCode 사이드바 TUNNEL DASHBOARD 패널 전체 화면. 빠른 시작 폼과 활성 터널 목록(URL, 포트, HTTPS, 시작 시각, QR/복사/열기/중지 버튼), 원격 콘솔 영역이 함께 보이는 개요 스크린샷" width="320" />
+
 ## 기능
 
 - 🌐 **로컬 서버 터널링**: 로컬 포트를 공개 URL로 즉시 공유
@@ -19,7 +21,7 @@
 
 ### VSIX 파일로 설치
 
-1. `custom-tunnel-1.0.0.vsix` 파일 다운로드
+1. `custom-tunnel-2.1.0.vsix` 파일 다운로드
 2. VSCode 실행
 3. Extensions 뷰 열기 (Ctrl+Shift+X / Cmd+Shift+X)
 4. 우측 상단 "..." 메뉴 클릭 → "Install from VSIX..." 선택
@@ -28,53 +30,55 @@
 ### 명령어로 설치
 
 ```bash
-code --install-extension custom-tunnel-1.0.0.vsix
+code --install-extension custom-tunnel-2.1.0.vsix
 ```
 
 ## 사용 방법
 
-### 1. 터널 시작
+### 1. 사이드바 열기
 
-**방법 1: 명령 팔레트**
+Activity Bar에서 "Custom Tunnel" 아이콘을 클릭하면 "TUNNEL DASHBOARD" 패널이 열립니다.
 
-- `Ctrl+Shift+P` (Windows/Linux) 또는 `Cmd+Shift+P` (Mac)
-- "Tunnel: Start Tunnel" 입력
-- 공유할 로컬 포트 번호 입력 (예: 3000)
+### 2. 터널 시작
 
-**방법 2: 사이드바**
+"⚡ 빠른 시작" 영역에서:
 
-- Activity Bar에서 "Custom Tunnel" 아이콘 클릭
-- "Start Tunnel" 버튼 클릭
-- 포트 번호 입력
+- **포트** 입력창에 공유할 로컬 포트 번호 입력 (예: 3000)
+- HTTPS로 동작하는 로컬 서버라면 **HTTPS 사용** 체크박스 체크
+- **🚇 터널 시작** 버튼 클릭
 
-### 2. URL 복사 및 공유
+무료 서버가 Sleep 상태였다면 Wake-up 진행률이 표시된 뒤 연결됩니다.
 
-생성된 터널의 공개 URL을:
+### 3. 활성 터널 확인 및 제어
 
-- 클립보드에 복사하거나
-- 브라우저에서 바로 열 수 있습니다
+터널이 시작되면 "📋 활성 터널" 목록에 항목이 추가되며, 아래 정보와 버튼이 표시됩니다:
 
-### 3. 원격 콘솔 모니터링
+- 터널 ID와 공개 URL (예: `https://debug-tool.onrender.com/57725512`)
+- 포트 / HTTPS 여부 / 시작 시각
+- **📱 QR**: QR 코드 팝업으로 모바일 접속 URL 표시
+- **📋 복사**: 공개 URL을 클립보드에 복사
+- **🌐 열기**: 공개 URL을 브라우저에서 열기
+- **⏹ 중지**: 해당 터널 중지
 
-터널이 실행되면 원격 서버의 콘솔 로그를 실시간으로 모니터링할 수 있습니다:
+<img src="images/screenshots/01-active-tunnel.png" alt="활성 터널 목록에 표시된 터널 ID, 공개 URL, 포트/HTTPS/시작 시각 정보와 QR·복사·열기·중지 버튼이 있는 화면" width="320" />
 
-- 터널 항목의 "▶ 원격 콘솔" 클릭하여 펼치기
-- 로그 레벨별 필터링: ALL, LOG, INFO, WARN, ERROR
-- 키워드 검색으로 특정 로그 찾기
-- 🗑️ 버튼으로 콘솔 로그 지우기
+QR 버튼을 누르면 모바일 카메라로 스캔할 수 있는 QR 코드가 팝업으로 나타납니다.
 
-### 4. QR 코드로 모바일 접속
+<img src="images/screenshots/02-qr-modal.png" alt="QR 버튼을 클릭했을 때 나타나는 모바일 접속용 QR 코드 팝업 화면" width="320" />
 
-모바일 기기에서 쉽게 접속하려면:
+### 4. 원격 콘솔 모니터링
 
-- 터널 항목의 "📱 QR" 버튼 클릭
-- 스마트폰 카메라로 QR 코드 스캔
-- 자동으로 공개 URL로 이동
+터널 항목의 "▶ 원격 콘솔" 을 클릭해 펼치면 원격 서버의 콘솔 로그를 실시간으로 확인할 수 있습니다:
+
+- **ALL** 드롭다운으로 로그 레벨별 필터링 (ALL, LOG, INFO, WARN, ERROR)
+- **필터...** 검색창에 키워드를 입력해 원하는 로그만 표시 (✕로 검색어 초기화)
+- 🗑️ 아이콘으로 콘솔 로그 전체 지우기
+
+<img src="images/screenshots/03-remote-console.png" alt="펼쳐진 원격 콘솔 패널. ALL 로그 레벨 드롭다운과 필터 검색창, 지우기 아이콘이 보이는 화면" width="320" />
 
 ### 5. 터널 중지
 
-- 사이드바에서 실행 중인 터널의 "⏹️ 중지" 버튼 클릭
-- 또는 명령 팔레트에서 "Tunnel: Stop Tunnel" 실행
+활성 터널 항목의 **⏹ 중지** 버튼을 클릭하면 해당 터널이 중지되고 목록에서 제거됩니다.
 
 ## 주요 명령어
 
@@ -167,6 +171,6 @@ dbckdgjs369
 
 ---
 
-**버전**: 1.0.0  
+**버전**: 2.1.0  
 **카테고리**: Development Tools  
 **언어**: TypeScript
