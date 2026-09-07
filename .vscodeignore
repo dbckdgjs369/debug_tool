@@ -3,8 +3,27 @@
 .gitignore
 .git
 
+# 소스 (런타임은 out/ 사용)
+src/**
+tsconfig.json
+scripts/**
+
+# 단, webview 자산은 런타임에 원본 경로에서 로드됨 — 반드시 포함해야 함
+# tunnelViewProvider.ts 가 src/webview/{template.html,style.css,main.js} 를 직접 읽는다.
+# 이 예외를 지우면 설치 후 사이드바가 ENOENT 로 뜨지 않는다. (2.1.0 회귀 사고)
+!src/webview/**
+
 # 문서 및 가이드 (README.md는 마켓플레이스에 필요하므로 유지)
 ARCHITECTURE.md
+PUBLISHING_GUIDE.md
+ICON_GUIDE.md
+DEPLOY_TEST.md
+CODE_ANALYSIS_REPORT.html
+
+# 터널 서버 코드는 Render에서 실행 — 확장 런타임 불필요 (client/만 필요)
+custom-tunnel/server/**
+custom-tunnel/*.md
+custom-tunnel/.DS_Store
 
 # 빌드 결과물
 *.vsix
