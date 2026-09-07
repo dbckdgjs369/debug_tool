@@ -5,7 +5,12 @@ const crypto = require("crypto");
 const http = require("http");
 
 const tunnelId = process.argv[2];
-const PORT = process.argv[3] || "8099";
+const PORT = process.argv[3] || process.env.TARGET_PORT || "8099";
+// 원격(Render) 검증에서는 호스트/스킴을 바꿔 같은 검증을 그대로 돌린다
+const HOST = process.env.TARGET_HOST || "localhost";
+const SECURE = process.env.TARGET_PROTO === "https";
+const WS_SCHEME = SECURE ? "wss" : "ws";
+const httpMod = SECURE ? require("https") : http;
 
 if (!tunnelId) {
   console.error("tunnelId 인자가 필요합니다");
@@ -22,10 +27,11 @@ function assert(name, pass, detail) {
   );
 }
 
-function get(path, headers = {}, port = PORT) {
+function get(path, headers = {}, override) {
+  const target = override || { host: HOST, port: PORT, mod: httpMod };
   return new Promise((resolve) => {
-    const req = http.request(
-      { host: "localhost", port, path, headers },
+    const req = target.mod.request(
+      { host: target.host, port: target.port, path, headers },
       (res) => {
         const chunks = [];
         res.on("data", (c) => chunks.push(c));
@@ -46,7 +52,7 @@ function get(path, headers = {}, port = PORT) {
 function connect(pathname, { cookie, protocols, headers } = {}) {
   return new Promise((resolve, reject) => {
     const client = new WebSocket(
-      `ws://localhost:${PORT}${pathname}`,
+      `${WS_SCHEME}://${HOST}:${PORT}${pathname}`,
       protocols,
       { headers: { ...(cookie ? { Cookie: cookie } : {}), ...headers } },
     );
@@ -93,12 +99,37 @@ function connect(pathname, { cookie, protocols, headers } = {}) {
 }
 
 // 관측 엔드포인트는 터널을 거치지 않고 가짜 앱에서 직접 읽는다
-const appGet = (path) => get(path, {}, "4321");
+const appGet = (path) =>
+  get(path, {}, { host: "localhost", port: "4321", mod: http });
 
 const cookie = `tunnelId=${tunnelId}`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// 조건이 만족될 때까지 폴링한다. 원격은 왕복 지연이 있어 고정 대기로는 부족하다.
+async function until(fn, ms = 10000) {
+  const t0 = Date.now();
+  for (;;) {
+    const value = await fn();
+    if (value !== null && value !== undefined && value !== false) {
+      return value;
+    }
+    if (Date.now() - t0 > ms) {
+      return null;
+    }
+    await sleep(200);
+  }
+}
+
+async function tunnelCount() {
+  const page = await get("/");
+  const m = page.body.match(/활성 터널: (\d+)개/);
+  return m ? Number(m[1]) : null;
+}
+
 (async () => {
+  // 원격에는 다른 터널이 함께 살아 있을 수 있으므로 절대값이 아니라 증가분을 본다
+  const countBefore = await tunnelCount();
+
   // A. 쿠키로 터널을 찾아 릴레이되는지 + 로컬이 먼저 보낸 메시지가 유실되지 않는지
   const a = await connect("/echo", { cookie });
   const welcome = await a.next();
@@ -152,34 +183,65 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   );
 
   // E. 브라우저 WS가 터널을 새로 발급하지 않는지 (예전 버그 회귀 방지)
-  const rootPage = await get("/");
-  const tunnelCount = (rootPage.body.match(/활성 터널: (\d+)개/) || [])[1];
+  const countAfter = await tunnelCount();
+  // 원격에는 남의 터널이 만료되며 줄어들 수 있다. 늘어나지 않는 것만 본다.
   assert(
     "브라우저 WS가 새 터널을 발급하지 않음",
-    tunnelCount === "1",
-    `활성 터널 ${tunnelCount}개`,
+    countBefore !== null && countAfter <= countBefore,
+    `${countBefore}개 → ${countAfter}개 (WS 2개 연결 후)`,
   );
 
   // F. 브라우저가 끊으면 로컬 WS도 닫히는지
   const closedBefore = stat2.closed;
   b.close(4000, "browser initiated");
   await b.closedWith;
-  await sleep(300);
-  const stat3 = JSON.parse((await appGet("/wsstat")).body);
+  const stat3 = await until(async () => {
+    const s = JSON.parse((await appGet("/wsstat")).body);
+    return s.closed > closedBefore ? s : null;
+  });
   assert(
     "브라우저 종료 → 로컬 WS 종료 전파",
-    stat3.closed === closedBefore + 1 && stat3.lastCloseCode === 4000,
-    `closed=${stat3.closed}, code=${stat3.lastCloseCode}`,
+    stat3 !== null,
+    stat3 ? `closed=${stat3.closed}` : "전파 안 됨",
   );
+  // Render의 WS 프록시는 close 코드를 전달하지 않는다(연결 종료 자체는 전파된다).
+  // 우리 코드 경로의 문제가 아니므로 로컬에서만 코드 일치를 판정한다.
+  if (SECURE) {
+    console.log(
+      `INFO  종료 코드 보존 = ${stat3?.lastCloseCode} (4000 기대) — 원격 프록시가 코드를 유실시킴, 판정 제외`,
+    );
+  } else {
+    assert(
+      "브라우저 종료 코드 보존 (4000)",
+      stat3?.lastCloseCode === 4000,
+      `code=${stat3?.lastCloseCode}`,
+    );
+  }
 
   // G. 로컬이 끊으면 브라우저에 코드가 전달되는지
+  assert(
+    "장시간 유지된 릴레이가 살아 있음 (G 전제)",
+    a.readyState === WebSocket.OPEN,
+    `readyState=${a.readyState}`,
+  );
   a.send("__close__");
   const aClosed = await a.closedWith;
   assert(
-    "로컬 종료 → 브라우저에 종료 코드 전달",
-    aClosed.code === 4321,
-    `code=${aClosed.code}, reason=${aClosed.reason}`,
+    "로컬 종료 → 브라우저 연결 종료 전파",
+    typeof aClosed.code === "number",
+    `code=${aClosed.code}`,
   );
+  if (SECURE) {
+    console.log(
+      `INFO  종료 코드 보존 = ${aClosed.code} (4321 기대) — 원격 프록시가 코드를 유실시킴, 판정 제외`,
+    );
+  } else {
+    assert(
+      "로컬 종료 코드 보존 (4321)",
+      aClosed.code === 4321,
+      `code=${aClosed.code}, reason=${aClosed.reason}`,
+    );
+  }
 
   // H. 로컬에 없는 경로는 502로 끊기는지 (101 먼저 주고 침묵하면 안 된다)
   let hStatus = null;

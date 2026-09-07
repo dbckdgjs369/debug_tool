@@ -12,6 +12,12 @@ All notable changes to the "custom-tunnel" extension will be documented in this 
   양방향 종료 코드가 모두 전달된다.
 - WS 릴레이 검증 `custom-tunnel/test/ws.js` (13개) 및 업그레이드 라우팅 검증
 
+### 알려진 제약
+
+- Render의 WebSocket 프록시는 **close 코드를 전달하지 않는다**. 연결 종료
+  자체는 양방향으로 전파되지만 코드는 1000/1006으로 바뀐다(로컬 서버에서는
+  정확히 보존된다). 종료 코드로 분기하는 앱은 터널을 거칠 때 영향을 받는다.
+
 ### 변경
 
 - 터널 에이전트는 전용 경로 `/__tunnel_agent`로 접속한다. 예전에는 경로를
