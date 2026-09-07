@@ -3,9 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- QR은 확장에 포함된 라이브러리로 그린다. 외부 출처는 필요 없다. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; style-src {{cspSource}} 'unsafe-inline'; script-src {{cspSource}} 'unsafe-inline' https://cdnjs.cloudflare.com; img-src {{cspSource}} https:; connect-src https:;"
+      content="default-src 'none'; style-src {{cspSource}} 'unsafe-inline'; script-src {{cspSource}} 'unsafe-inline'; img-src {{cspSource}} data:;"
     />
     <title>Custom Tunnel v{{version}}</title>
     <link rel="stylesheet" href="{{styleUri}}" />
@@ -47,9 +48,8 @@
     <div id="qrModal" class="qr-modal" onclick="closeQRModal(event)">
       <div class="qr-modal-content" onclick="event.stopPropagation()">
         <div class="qr-modal-title">📱 모바일로 접속하기</div>
-        <div class="qr-code-container">
-          <canvas id="qrCanvas"></canvas>
-        </div>
+        <!-- QR은 showQRCode()가 여기에 그린다 -->
+        <div class="qr-code-container"></div>
         <div id="qrUrl" class="qr-url"></div>
         <button class="qr-close-btn" onclick="closeQRModal()">닫기</button>
       </div>
@@ -81,7 +81,7 @@
         <p class="elapsed-time">경과 시간: <span id="elapsedTime">0</span>초</p>
       </div>
     </div>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="{{qrcodeUri}}"></script>
     <script src="{{scriptUri}}"></script>
   </body>
 </html>

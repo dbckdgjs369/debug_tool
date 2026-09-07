@@ -2,6 +2,38 @@
 
 All notable changes to the "custom-tunnel" extension will be documented in this file.
 
+## [2.1.4] - 2026-09-08
+
+### 변경
+
+- **QR 코드를 확장에 포함된 라이브러리로 직접 그린다.** 예전에는 터널 주소를
+  쿼리에 담아 `api.qrserver.com`으로 보내고 이미지를 받아왔다 — 주소가 외부
+  서비스로 나가고, 오프라인에서는 QR이 아예 안 떴다. 이제 외부 요청이 없다.
+  웹뷰 CSP도 함께 좁혔다 (`script-src`에서 cdnjs 제거, `img-src`에서 `https:`
+  제거, `connect-src` 제거).
+- `vscode:prepublish`가 컴파일을 다시 수행한다. `echo`로 막혀 있어서
+  `npx vsce package`를 직접 돌리면 낡은 `out/`이 그대로 실렸다.
+- 패키징에서 `yes |` 파이프 제거. vsce 경고를 무조건 승인해 회귀를 가렸다
+  (2.1.0의 webview 파일 누락 사고가 이런 유형이다). 실측 결과 불필요했다.
+
+### 제거
+
+- 로드만 하고 쓰지 않던 cdnjs qrcodejs `<script>`와 `<canvas id="qrCanvas">`
+  (`showQRCode`가 컨테이너를 비우면서 즉시 지워지고 있었다)
+- `data-action` 이벤트 위임 핸들러 3개 — UI는 인라인 `onclick`을 쓰고 있어
+  `data-action` 속성을 가진 요소가 하나도 없었다
+- 웹뷰 메시지 `addLog` 분기 — 발신하는 쪽이 없었다
+- 미사용 CSS 규칙 12개 (`.status-dot*`, `.btn-console*`, `.script-*`,
+  `.icon-btn.*-filter.active`)
+- 실행 불가한 `test`/`pretest` 스크립트 (`out/test`, `src/test` 모두 없음)
+- 저장소에 커밋돼 있던 `custom-tunnel-2.1.0.vsix` (빌드 산출물)
+
+### 추가
+
+- `.eslintrc.json` — `lint` 스크립트가 설정 파일이 없어 항상 실패하고 있었다.
+  이제 동작하며 지적된 7건(미사용 변수·불필요한 타입 표기·non-null 단정)을
+  모두 정리했다.
+
 ## [2.1.3] - 2026-09-07
 
 ### 추가

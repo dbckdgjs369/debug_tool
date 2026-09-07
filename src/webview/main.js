@@ -122,16 +122,15 @@ function showQRCode(url) {
   // 기존 QR 코드 제거
   qrContainer.innerHTML = "";
 
-  // QR 코드 이미지 생성 (Google Charts API 사용)
-  const qrSize = 200;
-  const qrImg = document.createElement("img");
-  qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=${qrSize}x${qrSize}&data=${encodeURIComponent(url)}`;
-  qrImg.alt = "QR Code";
-  qrImg.style.width = qrSize + "px";
-  qrImg.style.height = qrSize + "px";
-  qrImg.style.display = "block";
-
-  qrContainer.appendChild(qrImg);
+  // 확장에 포함된 qrcode.js로 직접 그린다.
+  // 예전에는 api.qrserver.com에 URL을 보내 이미지를 받아왔다 — 터널 주소가
+  // 외부 서비스로 나가고, 오프라인에서는 QR이 아예 안 떴다.
+  new QRCode(qrContainer, {
+    text: url,
+    width: 200,
+    height: 200,
+    correctLevel: QRCode.CorrectLevel.M,
+  });
 
   // 모달 표시
   modal.classList.add("active");
@@ -563,54 +562,5 @@ document.addEventListener("click", (e) => {
           console.error("복사 실패:", err);
         });
     }
-  }
-
-  // 기존 버튼 클릭 처리
-  const target = e.target.closest("[data-action]");
-  if (!target) return;
-
-  const action = target.getAttribute("data-action");
-  const tunnelId = target.getAttribute("data-tunnel-id");
-  const url = target.getAttribute("data-url");
-
-  switch (action) {
-    case "qr":
-      showQRCode(url);
-      break;
-    case "copy":
-      copyUrl(url);
-      break;
-    case "open":
-      openUrl(url);
-      break;
-    case "stop":
-      stopTunnel(tunnelId);
-      break;
-    case "toggle-console":
-      toggleConsole(tunnelId);
-      break;
-    case "clear-search":
-      clearSearch(tunnelId);
-      break;
-    case "clear-console":
-      clearConsole(tunnelId);
-      break;
-  }
-});
-
-// Select와 Input 이벤트 위임
-document.addEventListener("change", (e) => {
-  const target = e.target;
-  if (target.getAttribute("data-action") === "filter-logs") {
-    const tunnelId = target.getAttribute("data-tunnel-id");
-    filterLogsFromSelect(tunnelId);
-  }
-});
-
-document.addEventListener("input", (e) => {
-  const target = e.target;
-  if (target.getAttribute("data-action") === "search-logs") {
-    const tunnelId = target.getAttribute("data-tunnel-id");
-    searchLogs(tunnelId);
   }
 });

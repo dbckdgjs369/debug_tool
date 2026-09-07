@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
-import { TunnelManager, Tunnel } from "./tunnelManager";
+import { TunnelManager } from "./tunnelManager";
 
 export class TunnelViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "tunnelView";
@@ -60,7 +60,7 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
     });
 
     // 첫 접속 감지 시 QR 팝업 자동 닫기
-    this.tunnelManager.on("firstAccess", (tunnelId: string) => {
+    this.tunnelManager.on("firstAccess", () => {
       if (this._view) {
         this._view.webview.postMessage({
           type: "closeQRModal",
@@ -71,7 +71,7 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
 
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
-    context: vscode.WebviewViewResolveContext,
+    _context: vscode.WebviewViewResolveContext,
     _token: vscode.CancellationToken,
   ) {
     this._view = webviewView;
@@ -109,9 +109,6 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
           break;
         case "openUrl":
           vscode.env.openExternal(vscode.Uri.parse(data.url));
-          break;
-        case "addLog":
-          this.tunnelManager.addLog(data.tunnelId, data.log);
           break;
         case "clearLogs":
           this.tunnelManager.clearLogs(data.tunnelId);
@@ -154,20 +151,19 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
   }
 
   private restoreWebviewState() {
-    if (!this._view) {
+    const view = this._view;
+    if (!view) {
       return;
     }
 
-    const tunnels = this.tunnelManager.getTunnels();
-
     // 각 터널의 로그를 웹뷰에 전달
-    tunnels.forEach((tunnel) => {
-      this._view!.webview.postMessage({
+    for (const tunnel of this.tunnelManager.getTunnels()) {
+      view.webview.postMessage({
         type: "restoreLogs",
         tunnelId: tunnel.id,
         logs: tunnel.logs,
       });
-    });
+    }
   }
 
   private escapeHtml(text: string): string {
@@ -196,6 +192,16 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
     );
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this._extensionUri, "src", "webview", "main.js"),
+    );
+    // QR 라이브러리는 확장에 포함해 둔다. CDN을 쓰면 오프라인에서 QR이 안 뜬다.
+    const qrcodeUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(
+        this._extensionUri,
+        "src",
+        "webview",
+        "vendor",
+        "qrcode.min.js",
+      ),
     );
 
     // HTML 템플릿 읽기
@@ -283,6 +289,7 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
       .replace(/\{\{cspSource\}\}/g, cspSource)
       .replace(/\{\{styleUri\}\}/g, styleUri.toString())
       .replace(/\{\{scriptUri\}\}/g, scriptUri.toString())
+      .replace(/\{\{qrcodeUri\}\}/g, qrcodeUri.toString())
       .replace(/\{\{version\}\}/g, this.escapeHtml(this._version))
       .replace(/\{\{tunnelCount\}\}/g, tunnels.length.toString())
       .replace(/\{\{tunnelListContent\}\}/g, tunnelListContent);

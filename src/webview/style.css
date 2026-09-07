@@ -21,21 +21,6 @@ h2 {
   opacity: 0.8;
 }
 
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.status-dot.connected {
-  background-color: #4ec9b0;
-}
-
-.status-dot.disconnected {
-  background-color: #f48771;
-}
-
 .section {
   margin-bottom: 20px;
 }
@@ -350,22 +335,6 @@ button:active {
   opacity: 1;
 }
 
-.icon-btn.log-filter.active {
-  color: #4ec9b0;
-}
-
-.icon-btn.info-filter.active {
-  color: #4b96ff;
-}
-
-.icon-btn.warn-filter.active {
-  color: #ffcc00;
-}
-
-.icon-btn.error-filter.active {
-  color: #f48771;
-}
-
 .console-log-item.hidden {
   display: none;
 }
@@ -469,45 +438,6 @@ button:active {
 .console-toggle-btn {
   cursor: pointer;
   user-select: none;
-}
-
-.btn-console {
-  background: var(--vscode-button-secondaryBackground);
-  color: var(--vscode-button-secondaryForeground);
-  padding: 4px 8px;
-  font-size: 10px;
-}
-
-.btn-console:hover {
-  background: var(--vscode-button-secondaryHoverBackground);
-}
-
-.script-info {
-  background: rgba(75, 150, 255, 0.1);
-  border: 1px solid rgba(75, 150, 255, 0.3);
-  border-radius: 4px;
-  padding: 8px;
-  margin-top: 8px;
-  font-size: 10px;
-}
-
-.script-info-title {
-  font-weight: 600;
-  margin-bottom: 4px;
-  color: #4b96ff;
-}
-
-.script-code {
-  background: var(--vscode-input-background);
-  border: 1px solid var(--vscode-input-border);
-  border-radius: 2px;
-  padding: 6px;
-  margin-top: 4px;
-  font-family: "Monaco", "Menlo", "Courier New", monospace;
-  font-size: 9px;
-  overflow-x: auto;
-  word-break: break-all;
-  white-space: pre-wrap;
 }
 
 /* Wake-up 로딩 오버레이 스타일 */

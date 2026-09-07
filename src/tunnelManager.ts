@@ -24,7 +24,7 @@ export class TunnelManager extends EventEmitter {
   private activeTunnels: Map<string, Tunnel> = new Map();
   private clientPath: string;
   private serverUrl: string;
-  private maxLogsPerTunnel: number = 500; // 터널당 최대 로그 개수
+  private maxLogsPerTunnel = 500; // 터널당 최대 로그 개수
   private pendingTunnelProcess: ChildProcess | null = null; // 생성 중인 터널 프로세스
 
   constructor() {
@@ -36,7 +36,7 @@ export class TunnelManager extends EventEmitter {
     console.log(`[Tunnel] 환경: ${TUNNEL_ENV}, 서버: ${this.serverUrl}`);
   }
 
-  async startTunnel(port: number, useHttps: boolean = false): Promise<Tunnel> {
+  async startTunnel(port: number, useHttps = false): Promise<Tunnel> {
     return new Promise((resolve, reject) => {
       // 초기 상태 emit
       this.emit("wakeupProgress", {
@@ -306,7 +306,7 @@ export class TunnelManager extends EventEmitter {
     }
 
     // 모든 터널 중지
-    for (const [tunnelId, tunnel] of this.activeTunnels) {
+    for (const tunnel of this.activeTunnels.values()) {
       if (tunnel.process) {
         tunnel.process.kill();
       }
