@@ -23,11 +23,97 @@ console.log(`📡 로그 서버: ${tunnelServerHttpUrl}`);
 // 터널 서버에 연결
 const ws = new WebSocket(tunnelServerUrl);
 
-// 터널 ID 저장 변수
-let tunnelId = null;
+// 서버(Render)와 이 클라이언트(VSIX 안)는 따로 배포되므로 버전이 어긋날 수 있다.
+// server/index.js 의 PROTOCOL_VERSION 과 반드시 같아야 한다.
+const PROTOCOL_VERSION = 2;
+
+// 진행 중인 요청 (requestId -> { controller, flow })
+// 서버의 abort/pause/resume 제어 메시지를 받아 처리하기 위해 유지한다.
+const inflight = new Map();
+
+// WS 송신 버퍼가 이만큼 쌓이면 로컬 스트림을 멈춘다.
+// 없으면 큰 파일을 받을 때 메모리가 그대로 폭증한다.
+const WS_HIGH_WATER = 4 * 1024 * 1024;
+const WS_LOW_WATER = 1 * 1024 * 1024;
+
+// 로컬 서버가 응답 헤더를 줄 때까지의 제한 시간.
+// 헤더가 온 뒤에는 제한하지 않는다 (SSE 응답은 끝나지 않는 게 정상).
+const TTFB_TIMEOUT_MS = 30000;
+
+function sendJson(payload) {
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(payload));
+  }
+}
+
+// 응답 본문 청크는 바이너리 프레임으로 보낸다: [4바이트 BE requestId][페이로드]
+// Base64로 감싸면 33% 커지고, 텍스트/바이너리 분기 로직이 필요해진다.
+function sendChunk(requestId, chunk) {
+  if (ws.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  const header = Buffer.allocUnsafe(4);
+  header.writeUInt32BE(requestId, 0);
+  ws.send(Buffer.concat([header, chunk]), { binary: true });
+}
+
+// 취소(abort)와 실제 오류를 구분한다. axios는 취소 시점에 따라
+// CanceledError를 catch로 던지기도 하고 스트림 error로 흘리기도 한다.
+function isCanceled(error) {
+  return (
+    error?.name === "CanceledError" ||
+    error?.name === "AbortError" ||
+    error?.code === "ERR_CANCELED" ||
+    error?.message === "canceled"
+  );
+}
+
+// 스트림 일시정지 사유를 겹쳐 관리한다.
+// 서버 역압("peer")과 WS 버퍼 역압("ws")이 동시에 걸릴 수 있으므로,
+// 한쪽이 풀렸다고 바로 resume 하면 안 된다.
+function makeFlow(stream) {
+  const reasons = new Set();
+  return {
+    pause(reason) {
+      reasons.add(reason);
+      stream.pause();
+    },
+    resume(reason) {
+      reasons.delete(reason);
+      if (reasons.size === 0) {
+        stream.resume();
+      }
+    },
+    has(reason) {
+      return reasons.has(reason);
+    },
+  };
+}
+
+// WS 송신 버퍼가 빠질 때까지 폴링한다. ws 모듈에는 drain 이벤트가 없다.
+function waitForWsDrain(flow) {
+  const check = () => {
+    if (ws.readyState !== WebSocket.OPEN || ws.bufferedAmount < WS_LOW_WATER) {
+      flow.resume("ws");
+      return;
+    }
+    setTimeout(check, 20);
+  };
+  setTimeout(check, 20);
+}
+
+// 로컬 절대 URL을 상대 경로로 바꾼다.
+// 예: http://localhost:3000/foo → /foo
+// 이렇게 하면 폰에서도 같은 터널을 거쳐 요청이 나간다.
+// (기존 코드는 하드코딩된 `http://localhost:8080`으로 치환해서 오동작했다)
+const LOCAL_ABSOLUTE_URL = new RegExp(
+  `https?://(?:localhost|127\\.0\\.0\\.1):${localPort}`,
+  "gi",
+);
 
 ws.on("open", () => {
   console.log("✅ 터널 서버 연결 성공!");
+  sendJson({ type: "hello", protocol: PROTOCOL_VERSION });
 });
 
 ws.on("message", async (message) => {
@@ -35,255 +121,336 @@ ws.on("message", async (message) => {
     const data = JSON.parse(message);
 
     if (data.type === "connected") {
-      tunnelId = data.tunnelId; // 터널 ID 저장
+      // 구버전 서버는 protocol 필드를 보내지 않는다.
+      // 그대로 진행하면 모든 요청이 조용히 멈추므로 여기서 끊는다.
+      if (data.protocol !== PROTOCOL_VERSION) {
+        console.error(
+          `❌ 터널 서버 프로토콜 불일치 (서버 v${data.protocol ?? "1 이하"}, 클라이언트 v${PROTOCOL_VERSION})`,
+        );
+        console.error("   터널 서버를 최신 버전으로 배포해야 합니다.");
+        ws.close();
+        process.exit(1);
+      }
       console.log("\n🎉 터널 생성 완료!");
       console.log(`📎 터널 URL: ${data.url}`);
       console.log(`🔑 터널 ID: ${data.tunnelId}`);
       console.log("\n이제 터널 URL로 접속하면 로컬 서버로 연결됩니다!\n");
     } else if (data.type === "log") {
       // 원격 콘솔 로그 수신
-      const { level, message, timestamp } = data;
+      const { level, message: logMessage, timestamp } = data;
       console.log(
-        `🔍 [REMOTE_LOG] ${JSON.stringify({ level, message, timestamp })}`,
+        `🔍 [REMOTE_LOG] ${JSON.stringify({ level, message: logMessage, timestamp })}`,
       );
 
       // 페이지 로드 감지
-      if (message.includes("PAGE_LOADED")) {
+      if (logMessage.includes("PAGE_LOADED")) {
         console.log("[FIRST_ACCESS]");
       }
+    } else if (data.type === "abort") {
+      // 브라우저가 먼저 끊었거나 서버에서 타임아웃된 경우.
+      // 헤더 이후에 취소하면 axios가 catch가 아니라 stream error로 던지므로,
+      // 스트림 핸들러가 "오류"와 구분할 수 있도록 표시를 남긴다.
+      const entry = inflight.get(data.requestId);
+      if (entry) {
+        entry.aborted = true;
+        inflight.delete(data.requestId);
+        entry.controller.abort();
+      }
+    } else if (data.type === "pause") {
+      inflight.get(data.requestId)?.flow?.pause("peer");
+    } else if (data.type === "resume") {
+      inflight.get(data.requestId)?.flow?.resume("peer");
     } else if (data.type === "request") {
-      const { requestId, method, url, headers, body } = data;
+      await handleRequest(data);
+    }
+  } catch (error) {
+    console.error("❌ 메시지 처리 오류:", error);
+  }
+});
 
-      console.log(`📥 요청 받음: ${method} ${url}`);
+async function handleRequest(data) {
+  const { requestId, method, url, headers, bodyBase64 } = data;
 
-      try {
-        // 불필요한 헤더 제거 (프록시 문제 방지)
-        const cleanHeaders = { ...headers };
-        delete cleanHeaders["host"];
-        delete cleanHeaders["connection"];
-        delete cleanHeaders["content-length"];
-        delete cleanHeaders["transfer-encoding"];
-        delete cleanHeaders["accept-encoding"]; // gzip 문제 방지
+  console.log(`📥 요청 받음: ${method} ${url}`);
 
-        // 로컬 서버로 요청 전달
-        const protocol = useHttps ? "https" : "http";
-        const agent = useHttps
-          ? new https.Agent({
-              rejectUnauthorized: false, // 자체 서명 인증서 허용
-              keepAlive: false,
-              timeout: 25000,
-              scheduling: "lifo",
-            })
-          : new http.Agent({
-              keepAlive: false,
-              timeout: 25000,
-              scheduling: "lifo",
-            });
+  const controller = new AbortController();
+  inflight.set(requestId, { controller, flow: null });
 
-        const response = await axios({
-          method: method,
-          url: `${protocol}://localhost:${localPort}${url}`,
-          headers: cleanHeaders,
-          data: body || undefined,
-          validateStatus: () => true, // 모든 상태 코드 허용
-          maxRedirects: 0,
-          responseType: "arraybuffer", // 바이너리로 받아서 처리 (더 안정적)
-          timeout: 25000, // 25초 타임아웃 (서버의 30초보다 짧게)
-          decompress: true, // 자동 압축 해제 활성화 (gzip 처리)
-          socketPath: undefined,
-          httpAgent: !useHttps ? agent : undefined,
-          httpsAgent: useHttps ? agent : undefined,
-          // 소켓 타임아웃 설정
-          onDownloadProgress: undefined,
-          transitional: {
-            silentJSONParsing: true,
-            forcedJSONParsing: false,
-            clarifyTimeoutError: true,
-          },
+  // 헤더가 도착할 때까지만 걸어두는 타이머.
+  // axios 자체 timeout은 소켓 무활동 타임아웃이라 SSE 스트림을 죽인다.
+  let ttfbTimer = setTimeout(() => {
+    console.warn(`⏰ 로컬 응답 헤더 지연으로 중단: ${method} ${url}`);
+    controller.abort();
+  }, TTFB_TIMEOUT_MS);
+
+  try {
+    // 불필요한 헤더 제거 (프록시 문제 방지)
+    const cleanHeaders = { ...headers };
+    delete cleanHeaders["host"];
+    delete cleanHeaders["connection"];
+    delete cleanHeaders["content-length"];
+    delete cleanHeaders["transfer-encoding"];
+    delete cleanHeaders["accept-encoding"]; // gzip 문제 방지
+
+    const requestBody = bodyBase64
+      ? Buffer.from(bodyBase64, "base64")
+      : undefined;
+
+    // 로컬 서버로 요청 전달
+    const protocol = useHttps ? "https" : "http";
+    // agent timeout 은 소켓 무활동 타임아웃이다. 0 이 아니면 SSE 연결이 끊긴다.
+    const agent = useHttps
+      ? new https.Agent({
+          rejectUnauthorized: false, // 자체 서명 인증서 허용
+          keepAlive: false,
+          timeout: 0,
+          scheduling: "lifo",
+        })
+      : new http.Agent({
+          keepAlive: false,
+          timeout: 0,
+          scheduling: "lifo",
         });
 
-        // Content-Type에 따라 응답 데이터 처리
-        const contentType = response.headers["content-type"] || "";
+    const response = await axios({
+      method: method,
+      url: `${protocol}://localhost:${localPort}${url}`,
+      headers: cleanHeaders,
+      data: requestBody,
+      validateStatus: () => true, // 모든 상태 코드 허용
+      maxRedirects: 0,
+      responseType: "stream", // 헤더 도착 시점에 resolve → 본문은 흘려보낸다
+      timeout: 0, // 직접 만든 TTFB 타이머로 대체
+      signal: controller.signal,
+      decompress: true, // 자동 압축 해제 활성화 (gzip 처리)
+      httpAgent: !useHttps ? agent : undefined,
+      httpsAgent: useHttps ? agent : undefined,
+      transitional: {
+        silentJSONParsing: true,
+        forcedJSONParsing: false,
+        clarifyTimeoutError: true,
+      },
+    });
 
-        // 파일 확장자 기반으로 Content-Type 수정
-        let correctedContentType = contentType;
+    // 헤더가 도착했으므로 TTFB 타이머 해제
+    clearTimeout(ttfbTimer);
+    ttfbTimer = null;
 
-        // 쿼리 파라미터 추출
-        const [urlPath, queryString] = url.split("?");
+    // 서버가 이미 요청을 포기했으면(브라우저가 끊김) 더 진행하지 않는다
+    if (!inflight.has(requestId)) {
+      response.data.destroy();
+      return;
+    }
 
-        // Vite/Webpack 특수 쿼리 파라미터 체크 (?import, ?url, ?raw, ?react 등)
-        // 이런 경우 빌드 도구가 파일을 변환하므로 JavaScript로 처리
-        const hasSpecialQuery =
-          queryString &&
-          (queryString.includes("import") ||
-            queryString.includes("url") ||
-            queryString.includes("raw") ||
-            queryString.includes("inline") ||
-            queryString.includes("worker") ||
-            queryString.includes("react")); // SVG를 React 컴포넌트로 변환
+    const contentType = response.headers["content-type"] || "";
+    const correctedContentType = correctContentType(url, contentType);
 
-        // 특수 쿼리가 있으면 JavaScript로 강제 변환
-        if (hasSpecialQuery) {
-          // Vite 등이 파일을 JavaScript 모듈로 변환함
-          // 예: test.jpeg?import
-          correctedContentType = "application/javascript";
-        }
-        // 로컬 서버(Vite)가 이미 JavaScript를 반환한 경우
-        else if (
-          contentType &&
-          (contentType.includes("application/javascript") ||
-            contentType.includes("text/javascript") ||
-            contentType.includes("application/typescript") ||
-            contentType.includes("text/typescript"))
-        ) {
-          // 로컬 서버가 이미 올바르게 처리했으므로 그대로 사용
-          correctedContentType = contentType;
-        }
-        // 특수 쿼리가 없는 경우에만 확장자 기반 수정
-        else {
-          // SVG, 이미지, 폰트는 항상 강제 수정 (로컬 서버가 잘못된 타입을 반환하는 경우가 많음)
-          if (urlPath.endsWith(".svg")) {
-            correctedContentType = "image/svg+xml";
-          } else if (urlPath.endsWith(".png")) {
-            correctedContentType = "image/png";
-          } else if (urlPath.endsWith(".jpg") || urlPath.endsWith(".jpeg")) {
-            correctedContentType = "image/jpeg";
-          } else if (urlPath.endsWith(".gif")) {
-            correctedContentType = "image/gif";
-          } else if (urlPath.endsWith(".webp")) {
-            correctedContentType = "image/webp";
-          } else if (urlPath.endsWith(".ico")) {
-            correctedContentType = "image/x-icon";
-          } else if (urlPath.endsWith(".woff") || urlPath.endsWith(".woff2")) {
-            correctedContentType = "font/woff2";
-          } else if (urlPath.endsWith(".ttf")) {
-            correctedContentType = "font/ttf";
-          }
-          // JavaScript/CSS/JSON은 Content-Type이 비어있거나 잘못된 경우에만 수정
-          else if (
-            !contentType ||
-            contentType === "application/octet-stream" ||
-            contentType === "text/html"
-          ) {
-            if (urlPath.endsWith(".js") || urlPath.endsWith(".mjs")) {
-              correctedContentType = "application/javascript";
-            } else if (urlPath.endsWith(".jsx")) {
-              correctedContentType = "text/javascript";
-            } else if (urlPath.endsWith(".ts")) {
-              correctedContentType = "application/typescript";
-            } else if (urlPath.endsWith(".tsx")) {
-              correctedContentType = "text/typescript";
-            } else if (urlPath.endsWith(".css")) {
-              correctedContentType = "text/css";
-            } else if (urlPath.endsWith(".json")) {
-              correctedContentType = "application/json";
-            }
-          }
-        }
+    // 응답 헤더 정리 (프록시 문제 방지)
+    const cleanResponseHeaders = { ...response.headers };
 
-        const isBinary =
-          correctedContentType.includes("image/") ||
-          correctedContentType.includes("video/") ||
-          correctedContentType.includes("audio/") ||
-          correctedContentType.includes("application/pdf") ||
-          correctedContentType.includes("application/zip") ||
-          correctedContentType.includes("application/octet-stream") ||
-          correctedContentType.includes("font/") ||
-          correctedContentType.includes("application/wasm");
+    if (correctedContentType !== contentType) {
+      cleanResponseHeaders["content-type"] = correctedContentType;
+    }
 
-        // SVG는 텍스트 기반이지만 이미지로 처리 (Content-Type 보존)
-        const isSvg =
-          correctedContentType.includes("image/svg+xml") ||
-          correctedContentType.includes("svg");
+    delete cleanResponseHeaders["transfer-encoding"];
+    delete cleanResponseHeaders["connection"];
+    delete cleanResponseHeaders["content-encoding"]; // axios가 이미 압축 해제함
+    delete cleanResponseHeaders["content-length"]; // 길이가 변경될 수 있음
 
-        let responseBody;
-        let isBase64 = false;
+    // HTTPS 관련 헤더 제거 (HTTP 터널로 전달 시 SSL 오류 방지)
+    delete cleanResponseHeaders["strict-transport-security"];
+    delete cleanResponseHeaders["content-security-policy"];
+    delete cleanResponseHeaders["x-frame-options"];
+    delete cleanResponseHeaders["upgrade"];
+    delete cleanResponseHeaders["alt-svc"];
 
-        if (isBinary || isSvg) {
-          // 바이너리 데이터 및 SVG는 Base64로 인코딩 (Content-Type 보존을 위해)
-          if (Buffer.isBuffer(response.data)) {
-            responseBody = response.data.toString("base64");
-            isBase64 = true;
-          } else if (response.data instanceof ArrayBuffer) {
-            responseBody = Buffer.from(response.data).toString("base64");
-            isBase64 = true;
-          } else {
-            responseBody = "";
-          }
-        } else {
-          // 텍스트 데이터는 UTF-8 문자열로
-          if (Buffer.isBuffer(response.data)) {
-            responseBody = response.data.toString("utf8");
-          } else if (response.data instanceof ArrayBuffer) {
-            responseBody = Buffer.from(response.data).toString("utf8");
-          } else if (typeof response.data === "string") {
-            responseBody = response.data;
-          } else if (response.data === null || response.data === undefined) {
-            responseBody = "";
-          } else {
-            // 객체는 JSON으로
-            responseBody = JSON.stringify(response.data);
-          }
-        }
+    // Location 헤더가 로컬 절대 URL이면 상대 경로로 바꿔 터널을 타게 한다
+    if (cleanResponseHeaders["location"]) {
+      cleanResponseHeaders["location"] = cleanResponseHeaders[
+        "location"
+      ].replace(LOCAL_ABSOLUTE_URL, "");
+    }
 
-        // 응답 헤더 정리 (프록시 문제 방지)
-        const cleanResponseHeaders = { ...response.headers };
+    const isHtml = correctedContentType.includes("text/html");
 
-        // Content-Type 수정 적용
-        if (correctedContentType !== contentType) {
-          cleanResponseHeaders["content-type"] = correctedContentType;
-        }
+    if (isHtml) {
+      // HTML은 스크립트를 주입해야 하므로 전체 본문이 필요하다.
+      // 나머지는 모두 스트리밍한다.
+      await sendBufferedHtml(requestId, response, cleanResponseHeaders);
+    } else {
+      sendStreamed(requestId, response, cleanResponseHeaders, method, url);
+    }
+  } catch (error) {
+    if (ttfbTimer) {
+      clearTimeout(ttfbTimer);
+    }
 
-        delete cleanResponseHeaders["transfer-encoding"];
-        delete cleanResponseHeaders["connection"];
-        delete cleanResponseHeaders["content-encoding"]; // gzip 디코딩 오류 방지
-        delete cleanResponseHeaders["content-length"]; // 길이가 변경될 수 있음
+    if (isCanceled(error)) {
+      // 브라우저가 끊었거나 TTFB 초과. 서버는 이미 정리했으므로 조용히 종료.
+      console.log(`🚫 요청 중단됨: ${method} ${url}`);
+    } else {
+      console.error(`❌ 로컬 서버 요청 실패:`, error.message);
+      sendJson({
+        type: "response_error",
+        requestId: requestId,
+        statusCode: 502,
+        message: `Bad Gateway: ${error.message}`,
+      });
+    }
+    inflight.delete(requestId);
+  }
+}
 
-        // HTTPS 관련 헤더 제거 (HTTP 터널로 전달 시 SSL 오류 방지)
-        delete cleanResponseHeaders["strict-transport-security"];
-        delete cleanResponseHeaders["content-security-policy"];
-        delete cleanResponseHeaders["x-frame-options"];
-        delete cleanResponseHeaders["upgrade"];
-        delete cleanResponseHeaders["alt-svc"];
+async function sendBufferedHtml(requestId, response, responseHeaders) {
+  const chunks = [];
+  for await (const chunk of response.data) {
+    chunks.push(chunk);
+  }
 
-        // Location 헤더의 HTTPS를 HTTP로 변경 (리다이렉트 처리)
-        if (cleanResponseHeaders["location"]) {
-          const localhostPattern = new RegExp(
-            `https://localhost:${localPort}`,
-            "gi",
-          );
-          cleanResponseHeaders["location"] = cleanResponseHeaders["location"]
-            .replace(localhostPattern, `http://localhost:8080`)
-            .replace(/^https:\/\/localhost/i, "http://localhost");
-        }
+  let html = Buffer.concat(chunks).toString("utf8");
 
-        // 응답 본문에서 localhost HTTPS URL만 HTTP로 변경 (외부 리소스는 유지)
-        // 주의: import 경로나 상대 경로는 변경하지 않음
-        const localhostPattern = new RegExp(
-          `https://localhost:${localPort}`,
-          "gi",
-        );
-        // HTML에서만 URL 변환 (JS 모듈이나 JSON은 그대로)
-        if (cleanResponseHeaders["content-type"]?.includes("text/html")) {
-          responseBody = responseBody.replace(
-            localhostPattern,
-            "http://localhost:8080",
-          );
-        }
+  // 로컬 절대 URL을 상대 경로로 (외부 리소스는 건드리지 않는다)
+  html = html.replace(LOCAL_ABSOLUTE_URL, "");
 
-        // HTML 응답의 경우에만 원격 콘솔 캡처 스크립트 추가 (SVG 제외)
-        if (
-          response.status === 200 &&
-          cleanResponseHeaders["content-type"]?.includes("text/html") &&
-          !isSvg &&
-          !isBase64
-        ) {
-          // 터널 ID 가져오기
-          const tunnelIdFromClient = tunnelId || "unknown";
+  if (response.status === 200) {
+    html = injectConsoleCapture(html);
+  }
 
-          // </head> 태그 직전에 스크립트 추가 (타임스탬프로 캐싱 방지)
-          const timestamp = Date.now();
-          const script = `
+  const body = Buffer.from(html, "utf8");
+
+  sendJson({
+    type: "response_head",
+    requestId: requestId,
+    statusCode: response.status,
+    headers: responseHeaders,
+  });
+  if (body.length) {
+    sendChunk(requestId, body);
+  }
+  sendJson({ type: "response_end", requestId: requestId });
+  inflight.delete(requestId);
+
+  console.log(`📤 응답 전송 (HTML ${body.length}B): ${response.status}`);
+}
+
+function sendStreamed(requestId, response, responseHeaders, method, url) {
+  sendJson({
+    type: "response_head",
+    requestId: requestId,
+    statusCode: response.status,
+    headers: responseHeaders,
+  });
+
+  const stream = response.data;
+  const flow = makeFlow(stream);
+  const entry = inflight.get(requestId);
+  if (entry) {
+    entry.flow = flow;
+  }
+
+  let bytes = 0;
+
+  stream.on("data", (chunk) => {
+    bytes += chunk.length;
+    sendChunk(requestId, chunk);
+
+    // WS 버퍼가 차오르면 로컬에서 읽기를 멈춘다
+    if (ws.bufferedAmount > WS_HIGH_WATER && !flow.has("ws")) {
+      flow.pause("ws");
+      waitForWsDrain(flow);
+    }
+  });
+
+  stream.on("end", () => {
+    sendJson({ type: "response_end", requestId: requestId });
+    inflight.delete(requestId);
+    console.log(`📤 응답 전송 (${bytes}B): ${response.status} ${method} ${url}`);
+  });
+
+  stream.on("error", (error) => {
+    inflight.delete(requestId);
+
+    if (entry?.aborted || isCanceled(error)) {
+      // 정상적인 탭 닫기/이탈. 서버는 이미 요청을 정리했으므로 응답을 보내지 않는다.
+      console.log(`🚫 요청 중단됨: ${method} ${url}`);
+      return;
+    }
+
+    console.error(`❌ 응답 스트림 오류: ${method} ${url}`, error.message);
+    sendJson({
+      type: "response_error",
+      requestId: requestId,
+      statusCode: 502,
+      message: `Bad Gateway: ${error.message}`,
+    });
+  });
+}
+
+// 파일 확장자와 빌드 도구 쿼리를 보고 Content-Type을 보정한다.
+// (로컬 dev 서버가 잘못된 타입을 주는 경우가 잦다)
+function correctContentType(url, contentType) {
+  const [urlPath, queryString] = url.split("?");
+
+  // Vite/Webpack 특수 쿼리 파라미터 체크 (?import, ?url, ?raw, ?react 등)
+  // 이런 경우 빌드 도구가 파일을 변환하므로 JavaScript로 처리
+  const hasSpecialQuery =
+    queryString &&
+    (queryString.includes("import") ||
+      queryString.includes("url") ||
+      queryString.includes("raw") ||
+      queryString.includes("inline") ||
+      queryString.includes("worker") ||
+      queryString.includes("react")); // SVG를 React 컴포넌트로 변환
+
+  if (hasSpecialQuery) {
+    return "application/javascript";
+  }
+
+  // 로컬 서버(Vite)가 이미 JavaScript를 반환한 경우 그대로 사용
+  if (
+    contentType &&
+    (contentType.includes("application/javascript") ||
+      contentType.includes("text/javascript") ||
+      contentType.includes("application/typescript") ||
+      contentType.includes("text/typescript"))
+  ) {
+    return contentType;
+  }
+
+  // SVG, 이미지, 폰트는 항상 강제 수정
+  if (urlPath.endsWith(".svg")) return "image/svg+xml";
+  if (urlPath.endsWith(".png")) return "image/png";
+  if (urlPath.endsWith(".jpg") || urlPath.endsWith(".jpeg"))
+    return "image/jpeg";
+  if (urlPath.endsWith(".gif")) return "image/gif";
+  if (urlPath.endsWith(".webp")) return "image/webp";
+  if (urlPath.endsWith(".ico")) return "image/x-icon";
+  if (urlPath.endsWith(".woff") || urlPath.endsWith(".woff2"))
+    return "font/woff2";
+  if (urlPath.endsWith(".ttf")) return "font/ttf";
+
+  // JavaScript/CSS/JSON은 Content-Type이 비어있거나 잘못된 경우에만 수정
+  if (
+    !contentType ||
+    contentType === "application/octet-stream" ||
+    contentType === "text/html"
+  ) {
+    if (urlPath.endsWith(".js") || urlPath.endsWith(".mjs"))
+      return "application/javascript";
+    if (urlPath.endsWith(".jsx")) return "text/javascript";
+    if (urlPath.endsWith(".ts")) return "application/typescript";
+    if (urlPath.endsWith(".tsx")) return "text/typescript";
+    if (urlPath.endsWith(".css")) return "text/css";
+    if (urlPath.endsWith(".json")) return "application/json";
+  }
+
+  return contentType;
+}
+
+function injectConsoleCapture(html) {
+  // </head> 태그 직전에 스크립트 추가 (타임스탬프로 캐싱 방지)
+  const timestamp = Date.now();
+  const script = `
 <!-- Tunnel Script v${timestamp} -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -298,17 +465,17 @@ ws.on("message", async (message) => {
       if (parts.length === 2) return parts.pop().split(';').shift();
       return '';
     }
-    
+
     // 터널 ID 감지 (쿠키에서만)
     var detectedTunnelId = getCookie('tunnelId');
-    
+
     // 원격 콘솔 캡처
     if (detectedTunnelId) {
       var originalLog = console.log;
       var originalWarn = console.warn;
       var originalError = console.error;
       var originalInfo = console.info;
-      
+
       function sendLog(level, args) {
         var message = Array.from(args).map(function(arg) {
           if (typeof arg === 'object') {
@@ -317,18 +484,18 @@ ws.on("message", async (message) => {
           }
           return String(arg);
         }).join(' ');
-        
+
         fetch('${tunnelServerHttpUrl}/log', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            tunnelId: detectedTunnelId, 
-            level: level, 
-            message: message 
+          body: JSON.stringify({
+            tunnelId: detectedTunnelId,
+            level: level,
+            message: message
           })
         }).catch(function() {});
       }
-      
+
       console.log = function() {
         originalLog.apply(console, arguments);
         sendLog('log', arguments);
@@ -345,56 +512,25 @@ ws.on("message", async (message) => {
         originalInfo.apply(console, arguments);
         sendLog('info', arguments);
       };
-      
+
       console.log('[Tunnel] 원격 콘솔 활성화됨 - ID:', detectedTunnelId);
-      
+
       console.log('[Tunnel] PAGE_LOADED');
     } else {
       console.log('[Tunnel] 터널 ID 없음 - 원격 콘솔 비활성화');
     }
   })();
 </script>`;
-          responseBody = responseBody.replace("</head>", script + "</head>");
-        }
 
-        // 터널 서버로 응답 전송
-        ws.send(
-          JSON.stringify({
-            type: "response",
-            requestId: requestId,
-            statusCode: response.status,
-            headers: cleanResponseHeaders,
-            body: responseBody,
-            isBase64: isBase64, // Base64 인코딩 여부 플래그
-          }),
-        );
+  return html.replace("</head>", script + "</head>");
+}
 
-        console.log(
-          `📤 응답 전송: ${response.status} ${method} ${url}${
-            isBase64 ? " (Base64)" : ""
-          }`,
-        );
-      } catch (error) {
-        console.error(`❌ 로컬 서버 요청 실패:`, error.message);
-
-        // 에러 응답 전송
-        ws.send(
-          JSON.stringify({
-            type: "response",
-            requestId: requestId,
-            statusCode: 502,
-            headers: { "content-type": "text/plain" },
-            body: `Bad Gateway: ${error.message}`,
-          }),
-        );
-      }
-    }
-  } catch (error) {
-    console.error("❌ 메시지 처리 오류:", error);
+ws.on("close", (code, reason) => {
+  if (code === 4001) {
+    console.error(`❌ 프로토콜 불일치로 서버가 연결을 거부했습니다: ${reason}`);
+    console.error("   VSIX를 다시 설치하거나 터널 서버를 배포하세요.");
+    process.exit(1);
   }
-});
-
-ws.on("close", () => {
   console.log("❌ 터널 서버 연결 종료");
   process.exit(0);
 });

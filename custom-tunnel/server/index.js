@@ -51,6 +51,50 @@ const tunnels = new Map();
 // 대기 중인 HTTP 요청들 (응답을 기다리는 중)
 const pendingRequests = new Map();
 
+// 요청 ID는 바이너리 프레임 헤더(4바이트)에 실리므로 uint32 정수를 쓴다.
+let nextRequestId = 1;
+function allocRequestId() {
+  const id = nextRequestId++;
+  if (nextRequestId > 0xffffffff) {
+    nextRequestId = 1;
+  }
+  return id;
+}
+
+// 서버와 클라이언트(VSIX 안에 들어 있음)는 따로 배포되므로 버전이 어긋날 수 있다.
+// 어긋난 걸 알려주지 않으면 "모든 요청이 조용히 멈춤"으로 나타나 원인을 못 찾는다.
+// 프로토콜을 바꿀 때마다 이 숫자를 올린다.
+//   1: response 단일 프레임 (Base64)
+//   2: response_head + 바이너리 청크 + response_end (스트리밍)
+const PROTOCOL_VERSION = 2;
+// 클라이언트가 hello를 보낼 때까지 기다리는 시간
+const HELLO_GRACE_MS = 5000;
+
+// 요청 바디 상한 (터널은 개발용이므로 넉넉히, 단 무제한은 아님)
+const MAX_REQUEST_BODY = 50 * 1024 * 1024;
+// 첫 바이트까지의 제한 시간. 이후에는 타임아웃을 걸지 않는다 (SSE는 끝나지 않음).
+const TTFB_TIMEOUT_MS = 30000;
+
+function sendControl(ws, payload) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try {
+      ws.send(JSON.stringify(payload));
+    } catch {
+      // 연결이 이미 끊긴 경우는 무시 (close 핸들러가 정리한다)
+    }
+  }
+}
+
+function finishRequest(requestId) {
+  const pending = pendingRequests.get(requestId);
+  if (!pending) {
+    return;
+  }
+  clearTimeout(pending.timeout);
+  pendingRequests.delete(requestId);
+  pending.ownRequests?.delete(requestId);
+}
+
 console.log("🚀 Custom Tunnel Server Starting...");
 
 // 로그 수신 엔드포인트 (GET은 상태 확인용)
@@ -108,41 +152,125 @@ wss.on("connection", (ws, req) => {
   const protocol = host.includes("localhost") ? "http" : "https";
   const serverUrl = `${protocol}://${host}/${tunnelId}`;
 
+  // 클라이언트가 구버전이면 hello가 오지 않는다. 그 상태로 두면 모든 요청이
+  // 조용히 멈추므로, 유예 시간 뒤에 이유를 알려주고 끊는다.
+  let helloSeen = false;
+  const helloTimer = setTimeout(() => {
+    if (helloSeen) {
+      return;
+    }
+    console.warn(`⚠️  구버전 클라이언트 (hello 없음): ${tunnelId}`);
+    // 구버전 클라이언트도 type:"log"는 처리하므로 확장 콘솔에 이유가 남는다
+    sendControl(ws, {
+      type: "log",
+      level: "error",
+      message: `터널 클라이언트가 구버전입니다. 서버 프로토콜 v${PROTOCOL_VERSION}. VSIX를 다시 설치하세요.`,
+      timestamp: new Date().toISOString(),
+    });
+    ws.close(4001, `protocol mismatch: server v${PROTOCOL_VERSION}`);
+  }, HELLO_GRACE_MS);
+
   // 클라이언트에게 터널 ID 전송
   ws.send(
     JSON.stringify({
       type: "connected",
+      protocol: PROTOCOL_VERSION,
       tunnelId: tunnelId,
       url: serverUrl,
     }),
   );
 
+  // 이 터널을 기다리는 요청들. 연결이 끊기면 전부 실패 처리해야 한다.
+  const ownRequests = new Set();
+  ws.ownRequests = ownRequests;
+
   // 클라이언트로부터 응답 받기
-  ws.on("message", (message) => {
+  // - 텍스트 프레임: 제어 메시지(JSON)
+  // - 바이너리 프레임: 응답 본문 청크 [4바이트 BE requestId][페이로드]
+  ws.on("message", (message, isBinary) => {
+    if (isBinary) {
+      if (message.length < 4) {
+        return;
+      }
+      const requestId = message.readUInt32BE(0);
+      const pending = pendingRequests.get(requestId);
+      // head가 아직 안 왔으면 쓸 수 없다 (순서가 깨진 경우 방어)
+      if (!pending || !pending.headSent) {
+        return;
+      }
+
+      const flushed = pending.res.write(message.subarray(4));
+      if (!flushed && !pending.paused) {
+        // 브라우저가 받아가지 못하는 중 → 로컬 스트림을 멈춰 메모리 폭증을 막는다
+        pending.paused = true;
+        sendControl(ws, { type: "pause", requestId });
+        pending.res.once("drain", () => {
+          pending.paused = false;
+          sendControl(ws, { type: "resume", requestId });
+        });
+      }
+      return;
+    }
+
     try {
       const data = JSON.parse(message);
 
-      if (data.type === "response") {
-        const { requestId, statusCode, headers, body, isBase64 } = data;
-
-        // 대기 중인 요청에 응답 전송
-        const pendingReq = pendingRequests.get(requestId);
-        if (pendingReq) {
-          pendingReq.res.writeHead(statusCode, headers);
-
-          // Base64로 인코딩된 바이너리 데이터는 디코딩하여 전송
-          if (isBase64) {
-            const binaryData = Buffer.from(body, "base64");
-            pendingReq.res.end(binaryData);
-            console.log(`📤 응답 전송 (바이너리): ${requestId}`);
-          } else {
-            // 텍스트 데이터는 그대로 전송
-            pendingReq.res.end(body);
-            console.log(`📤 응답 전송: ${requestId}`);
-          }
-
-          pendingRequests.delete(requestId);
+      if (data.type === "hello") {
+        helloSeen = true;
+        clearTimeout(helloTimer);
+        if (data.protocol !== PROTOCOL_VERSION) {
+          console.warn(
+            `⚠️  프로토콜 불일치: 클라이언트 v${data.protocol} ↔ 서버 v${PROTOCOL_VERSION}`,
+          );
+          ws.close(
+            4001,
+            `protocol mismatch: server v${PROTOCOL_VERSION}, client v${data.protocol}`,
+          );
+        } else {
+          console.log(`🤝 프로토콜 v${data.protocol} 확인: ${tunnelId}`);
         }
+        return;
+      }
+
+      const pending = pendingRequests.get(data.requestId);
+
+      if (data.type === "response_head") {
+        if (!pending) {
+          return;
+        }
+        // 첫 바이트가 도착했으므로 TTFB 타임아웃을 해제한다.
+        // 이후로는 시간 제한을 두지 않는다 — SSE 응답은 원래 끝나지 않는다.
+        clearTimeout(pending.timeout);
+        pending.timeout = null;
+
+        const headers = { ...data.headers };
+        // 중간 프록시가 응답을 모아두면 SSE가 폰까지 도달하지 않는다
+        headers["x-accel-buffering"] = "no";
+
+        pending.res.writeHead(data.statusCode, headers);
+        pending.res.flushHeaders();
+        pending.res.socket?.setNoDelay(true);
+        pending.headSent = true;
+      } else if (data.type === "response_end") {
+        if (!pending) {
+          return;
+        }
+        pending.res.end();
+        finishRequest(data.requestId);
+        console.log(`📤 응답 완료: ${data.requestId}`);
+      } else if (data.type === "response_error") {
+        if (!pending) {
+          return;
+        }
+        if (!pending.res.headersSent) {
+          pending.res
+            .status(data.statusCode || 502)
+            .send(data.message || "Bad Gateway");
+        } else {
+          // 이미 스트리밍이 시작된 뒤라면 상태 코드를 바꿀 수 없다. 끊는 게 최선.
+          pending.res.end();
+        }
+        finishRequest(data.requestId);
       }
     } catch (error) {
       console.error("❌ 메시지 처리 오류:", error);
@@ -150,8 +278,26 @@ wss.on("connection", (ws, req) => {
   });
 
   ws.on("close", () => {
+    clearTimeout(helloTimer);
     console.log(`❌ 터널 종료: ${tunnelId}`);
     tunnels.delete(tunnelId);
+
+    // 이 터널의 응답을 기다리던 요청을 즉시 끊는다.
+    // 정리하지 않으면 TTFB 타임아웃(30초)까지 브라우저가 매달려 있게 된다.
+    for (const requestId of [...ownRequests]) {
+      const pending = pendingRequests.get(requestId);
+      if (!pending) {
+        continue;
+      }
+      clearTimeout(pending.timeout);
+      if (!pending.res.headersSent) {
+        pending.res.status(503).send("Tunnel closed");
+      } else {
+        pending.res.end();
+      }
+      pendingRequests.delete(requestId);
+    }
+    ownRequests.clear();
   });
 
   ws.on("error", (error) => {
@@ -280,26 +426,51 @@ app.all("*", (req, res) => {
     return res.status(503).send("Tunnel not available");
   }
 
-  // 요청 ID 생성
-  const requestId = uuidv4();
+  const requestId = allocRequestId();
+  ws.ownRequests.add(requestId);
 
-  // 요청을 대기 목록에 추가
-  pendingRequests.set(requestId, { req, res });
+  const pending = {
+    req,
+    res,
+    ws,
+    ownRequests: ws.ownRequests,
+    headSent: false,
+    paused: false,
+    timeout: null,
+  };
+  pendingRequests.set(requestId, pending);
 
-  // 바디 수집
-  let body = "";
+  // 바디 수집 — Buffer로 모은다.
+  // 이전에는 `body += chunk.toString()` 이어서 UTF-8로 디코딩되며
+  // 이미지·파일 업로드 바이트가 손상됐다.
+  const bodyChunks = [];
+  let bodyBytes = 0;
   let bodyError = false;
 
   req.on("data", (chunk) => {
-    body += chunk.toString();
-  });
-
-  req.on("end", () => {
     if (bodyError) {
       return;
     }
+    bodyBytes += chunk.length;
+    if (bodyBytes > MAX_REQUEST_BODY) {
+      bodyError = true;
+      console.warn(`⚠️  요청 바디 상한 초과: ${requestId} (${bodyBytes}B)`);
+      if (!res.headersSent) {
+        res.status(413).send("Payload Too Large");
+      }
+      finishRequest(requestId);
+      req.destroy();
+      return;
+    }
+    bodyChunks.push(chunk);
+  });
 
-    // 터널 클라이언트에게 요청 전송
+  req.on("end", () => {
+    if (bodyError || !pendingRequests.has(requestId)) {
+      return;
+    }
+
+    const body = Buffer.concat(bodyChunks);
     try {
       ws.send(
         JSON.stringify({
@@ -308,19 +479,17 @@ app.all("*", (req, res) => {
           method: req.method,
           url: fullPath,
           headers: req.headers,
-          body: body,
+          bodyBase64: body.length ? body.toString("base64") : "",
         }),
       );
 
-      console.log(`📨 터널로 전송: ${req.method} ${fullPath}`);
+      console.log(`📨 터널로 전송: ${req.method} ${fullPath} (${body.length}B)`);
     } catch (error) {
       console.error(`❌ 전송 실패: ${requestId}`, error.message);
-      if (pendingRequests.has(requestId)) {
-        pendingRequests.delete(requestId);
-        if (!res.headersSent) {
-          res.status(502).send("Bad Gateway: Failed to send request to tunnel");
-        }
+      if (!res.headersSent) {
+        res.status(502).send("Bad Gateway: Failed to send request to tunnel");
       }
+      finishRequest(requestId);
     }
   });
 
@@ -328,36 +497,37 @@ app.all("*", (req, res) => {
     bodyError = true;
     console.error(`❌ 요청 오류: ${requestId}`, error.message);
     if (pendingRequests.has(requestId)) {
-      pendingRequests.delete(requestId);
       if (!res.headersSent) {
         res.status(502).send(`Bad Gateway: ${error.message}`);
       }
+      finishRequest(requestId);
     }
   });
 
   res.on("close", () => {
-    // 클라이언트가 연결을 끊은 경우
+    // 브라우저가 먼저 끊은 경우 (SSE 탭을 닫는 등).
+    // 알려주지 않으면 클라이언트 쪽 로컬 스트림이 계속 살아서 누적된다.
     if (pendingRequests.has(requestId)) {
-      pendingRequests.delete(requestId);
       console.log(`🔌 클라이언트 연결 끊김: ${requestId}`);
+      sendControl(ws, { type: "abort", requestId });
+      finishRequest(requestId);
     }
   });
 
-  // 타임아웃 설정 (30초)
-  const timeout = setTimeout(() => {
-    if (pendingRequests.has(requestId)) {
-      pendingRequests.delete(requestId);
-      if (!res.headersSent) {
-        res.status(504).send("Gateway Timeout");
-      }
-      console.log(`⏰ 타임아웃: ${requestId}`);
+  // 첫 바이트까지만 제한한다. 응답이 시작된 뒤에는 제한을 두지 않는다.
+  // (기존엔 "응답 완료까지 30초"여서 SSE가 항상 504로 끊겼다)
+  pending.timeout = setTimeout(() => {
+    const current = pendingRequests.get(requestId);
+    if (!current || current.headSent) {
+      return;
     }
-  }, 30000);
-
-  // 응답이 완료되면 타임아웃 취소
-  res.on("finish", () => {
-    clearTimeout(timeout);
-  });
+    console.log(`⏰ 타임아웃 (첫 바이트 미도달): ${requestId}`);
+    sendControl(ws, { type: "abort", requestId });
+    if (!res.headersSent) {
+      res.status(504).send("Gateway Timeout");
+    }
+    finishRequest(requestId);
+  }, TTFB_TIMEOUT_MS);
 });
 
 const PORT = process.env.PORT || 8080;
