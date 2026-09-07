@@ -7,11 +7,12 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'none'; style-src {{cspSource}} 'unsafe-inline'; script-src {{cspSource}} 'unsafe-inline' https://cdnjs.cloudflare.com; img-src {{cspSource}} https:; connect-src https:;"
     />
-    <title>Custom Tunnel 2.0</title>
+    <title>Custom Tunnel v{{version}}</title>
     <link rel="stylesheet" href="{{styleUri}}" />
   </head>
   <body>
-    <h2>🚇 Custom Tunnel 2.0</h2>
+    <!-- 버전은 설치된 확장 매니페스트(package.json)에서 주입된다. 하드코딩 금지. -->
+    <h2>🚇 Custom Tunnel <span class="app-version">v{{version}}</span></h2>
 
     <div class="section">
       <div class="quick-start">

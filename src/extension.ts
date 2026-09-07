@@ -11,7 +11,14 @@ export function activate(context: vscode.ExtensionContext) {
   tunnelManager = new TunnelManager();
 
   // Webview Provider 등록
-  const provider = new TunnelViewProvider(context.extensionUri, tunnelManager);
+  // 버전은 설치된 확장 매니페스트에서 읽는다 (소스에 박아두면 릴리스마다 어긋난다)
+  const version = context.extension.packageJSON.version as string;
+
+  const provider = new TunnelViewProvider(
+    context.extensionUri,
+    tunnelManager,
+    version,
+  );
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(

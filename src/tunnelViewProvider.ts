@@ -11,6 +11,8 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly _extensionUri: vscode.Uri,
     private readonly tunnelManager: TunnelManager,
+    // 설치된 확장 매니페스트의 버전. 헤더 표시에 쓰이며 하드코딩하지 않는다.
+    private readonly _version: string,
   ) {
     // 터널 이벤트 리스닝
     this.tunnelManager.on("tunnelStarted", () => {
@@ -281,6 +283,7 @@ export class TunnelViewProvider implements vscode.WebviewViewProvider {
       .replace(/\{\{cspSource\}\}/g, cspSource)
       .replace(/\{\{styleUri\}\}/g, styleUri.toString())
       .replace(/\{\{scriptUri\}\}/g, scriptUri.toString())
+      .replace(/\{\{version\}\}/g, this.escapeHtml(this._version))
       .replace(/\{\{tunnelCount\}\}/g, tunnels.length.toString())
       .replace(/\{\{tunnelListContent\}\}/g, tunnelListContent);
 
