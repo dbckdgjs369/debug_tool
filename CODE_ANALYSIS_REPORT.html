@@ -1,0 +1,1056 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>debug_tool (Custom Tunnel) 코드베이스 분석 보고서</title>
+<style>
+  :root{
+    --bg:#0e1117; --bg2:#151a23; --bg3:#1b212c; --line:#2a3240;
+    --fg:#e6edf3; --fg2:#9aa7b8; --fg3:#6e7d90;
+    --p0:#ff5c5c; --p1:#ff9f43; --p2:#ffd93d; --p3:#5ec8f8;
+    --ok:#3ddc97; --acc:#7aa2f7; --acc2:#bb9af7;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Apple SD Gothic Neo","Noto Sans KR",Roboto,sans-serif;
+    line-height:1.7;font-size:15px}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 24px 120px}
+  header.hero{padding:64px 0 40px;border-bottom:1px solid var(--line);margin-bottom:8px}
+  header.hero h1{font-size:36px;margin:0 0 10px;letter-spacing:-.02em}
+  header.hero .sub{color:var(--fg2);font-size:16px;margin:0}
+  header.hero .meta{margin-top:18px;color:var(--fg3);font-size:13px}
+  nav.toc{position:sticky;top:0;z-index:50;background:rgba(14,17,23,.92);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);padding:10px 0;margin-bottom:36px}
+  nav.toc ul{list-style:none;display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0;max-width:1180px;margin:0 auto}
+  nav.toc a{color:var(--fg2);text-decoration:none;font-size:12.5px;padding:5px 10px;border-radius:6px;white-space:nowrap}
+  nav.toc a:hover{background:var(--bg3);color:var(--fg)}
+  h2{font-size:25px;margin:56px 0 8px;letter-spacing:-.01em;scroll-margin-top:60px}
+  h2 .num{color:var(--acc);font-variant-numeric:tabular-nums;margin-right:10px}
+  h3{font-size:18px;margin:32px 0 8px;color:var(--fg)}
+  h4{font-size:15px;margin:20px 0 6px;color:var(--fg2)}
+  p{margin:10px 0}
+  code{background:var(--bg3);padding:2px 6px;border-radius:5px;font-size:13px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#c8d6e5}
+  pre{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow-x:auto;
+    font-size:12.5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#cbd5e1;line-height:1.6}
+  .card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin:16px 0}
+  .grid{display:grid;gap:14px}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+  .g4{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--fg2);font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;
+     background:var(--bg2)}
+  tr:hover td{background:rgba(122,162,247,.04)}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:700;
+    letter-spacing:.03em;white-space:nowrap}
+  .t-p0{background:rgba(255,92,92,.15);color:var(--p0);border:1px solid rgba(255,92,92,.35)}
+  .t-p1{background:rgba(255,159,67,.15);color:var(--p1);border:1px solid rgba(255,159,67,.35)}
+  .t-p2{background:rgba(255,217,61,.13);color:var(--p2);border:1px solid rgba(255,217,61,.32)}
+  .t-p3{background:rgba(94,200,248,.13);color:var(--p3);border:1px solid rgba(94,200,248,.32)}
+  .t-ok{background:rgba(61,220,151,.14);color:var(--ok);border:1px solid rgba(61,220,151,.34)}
+  .issue{background:var(--bg2);border:1px solid var(--line);border-left:4px solid var(--acc);
+    border-radius:0 12px 12px 0;padding:18px 22px;margin:16px 0}
+  .issue.p0{border-left-color:var(--p0)} .issue.p1{border-left-color:var(--p1)}
+  .issue.p2{border-left-color:var(--p2)} .issue.p3{border-left-color:var(--p3)}
+  .issue h3{margin:0 0 4px;font-size:17px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .issue .file{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--acc);margin:2px 0 10px}
+  .issue dl{margin:0;display:grid;grid-template-columns:76px 1fr;gap:6px 14px;font-size:13.8px}
+  .issue dt{color:var(--fg3);font-weight:600;font-size:12.5px;padding-top:2px}
+  .issue dd{margin:0}
+  .kpi{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:18px;text-align:center}
+  .kpi .v{font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1.2}
+  .kpi .l{color:var(--fg3);font-size:12px;margin-top:4px}
+  .bar{height:8px;background:var(--bg3);border-radius:999px;overflow:hidden;margin-top:10px}
+  .bar > i{display:block;height:100%;border-radius:999px}
+  .score{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:18px}
+  .score .top{display:flex;justify-content:space-between;align-items:baseline}
+  .score .n{font-size:14px;color:var(--fg2)}
+  .score .s{font-size:26px;font-weight:800}
+  .score .c{font-size:12.5px;color:var(--fg3);margin-top:10px}
+  ul.tight{margin:8px 0;padding-left:20px} ul.tight li{margin:5px 0}
+  .diagram{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:10px;overflow-x:auto}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;color:var(--fg3);font-size:12.5px;margin-top:10px}
+  .legend b{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+  .note{border-left:3px solid var(--acc2);background:rgba(187,154,247,.06);padding:10px 16px;
+    border-radius:0 8px 8px 0;color:var(--fg2);font-size:13.5px;margin:14px 0}
+  .good{border-left:3px solid var(--ok);background:rgba(61,220,151,.06);padding:10px 16px;
+    border-radius:0 8px 8px 0;font-size:13.8px;margin:10px 0}
+  .flow{counter-reset:step;list-style:none;padding:0;margin:14px 0}
+  .flow li{position:relative;padding:8px 0 8px 40px;border-bottom:1px dashed var(--line);font-size:13.8px}
+  .flow li:last-child{border-bottom:0}
+  .flow li::before{counter-increment:step;content:counter(step);position:absolute;left:0;top:8px;
+    width:24px;height:24px;border-radius:50%;background:var(--bg3);color:var(--acc);
+    display:grid;place-items:center;font-size:12px;font-weight:700}
+  .phase{border:1px solid var(--line);border-radius:12px;padding:18px 20px;background:var(--bg2)}
+  .phase h4{margin:0 0 4px;color:var(--fg);font-size:16px}
+  .phase .when{color:var(--fg3);font-size:12px;margin-bottom:10px}
+  footer{margin-top:80px;padding-top:24px;border-top:1px solid var(--line);color:var(--fg3);font-size:12.5px}
+  @media (max-width:640px){
+    .issue dl{grid-template-columns:1fr} .issue dt{padding-top:8px}
+    header.hero h1{font-size:27px} h2{font-size:21px}
+  }
+</style>
+</head>
+<body>
+
+<nav class="toc"><ul>
+  <li><a href="#s1">1. 요약</a></li>
+  <li><a href="#s2">2. 기술 스택·구조</a></li>
+  <li><a href="#s3">3. 아키텍처</a></li>
+  <li><a href="#s4">4. 흐름·인증</a></li>
+  <li><a href="#s5">5. 안정성</a></li>
+  <li><a href="#s6">6. 성능</a></li>
+  <li><a href="#s7">7. 보안</a></li>
+  <li><a href="#s8">8. 유지보수성</a></li>
+  <li><a href="#s9">9. Top 10</a></li>
+  <li><a href="#s10">10. Quick Wins</a></li>
+  <li><a href="#s11">11. 우선순위</a></li>
+  <li><a href="#s12">12. 로드맵</a></li>
+  <li><a href="#s13">13. 점수</a></li>
+</ul></nav>
+
+<div class="wrap">
+
+<header class="hero">
+  <h1>debug_tool / Custom Tunnel — 코드베이스 분석 보고서</h1>
+  <p class="sub">VS Code 확장 + 자체 WebSocket 터널 서버(Render) 전 계층 아키텍처·안정성·성능·보안·유지보수성 진단</p>
+  <p class="meta">
+    분석 대상: <code>/Users/yoochangheon/debug_tool</code> · branch <code>main</code> · 커밋 <code>0113c92</code> · 버전 <code>2.1.0</code><br>
+    분석 범위: 소스 전체(TypeScript 4파일, Webview 3파일, 터널 server/client, 빌드 스크립트, 패키징 산출물 <code>.vsix</code> 검증)<br>
+    작성일: 2026-09-05 · 본 분석 중 소스 코드는 일절 수정하지 않았습니다.
+  </p>
+</header>
+
+<!-- ============ 1 ============ -->
+<h2 id="s1"><span class="num">01</span>Executive Summary</h2>
+
+<div class="grid g4" style="margin-top:18px">
+  <div class="kpi"><div class="v" style="color:var(--fg)">~2,900</div><div class="l">분석 대상 코드 라인(LOC)</div></div>
+  <div class="kpi"><div class="v" style="color:var(--p0)">4</div><div class="l">P0 (즉시 조치)</div></div>
+  <div class="kpi"><div class="v" style="color:var(--p1)">7</div><div class="l">P1 (단기 조치)</div></div>
+  <div class="kpi"><div class="v" style="color:var(--p0)">0</div><div class="l">자동화 테스트</div></div>
+</div>
+
+<div class="card">
+  <p><b>한 줄 요약 —</b> ngrok 유사 기능(터널 + 원격 콘솔 + QR)을 3,000줄 미만으로 동작시킨 아이디어와 UX 완성도는 좋으나,
+  <b>릴리스된 2.1.0 VSIX가 실행 불가 상태</b>이고, <b>터널 접근 제어가 전무</b>하며, <b>모든 터널이 하나의 오리진을 공유</b>해
+  프로덕션 신뢰성 관점에서는 아직 "개인용 프로토타입" 단계입니다.</p>
+
+  <h4>가장 시급한 3가지</h4>
+  <ul class="tight">
+    <li><b>배포 산출물 파손 (P0):</b> <code>.vscodeignore</code>가 <code>src/**</code>를 제외하도록 바뀌었는데,
+      런타임 코드(<code>tunnelViewProvider.ts</code>)는 여전히 <code>src/webview/template.html</code>을
+      <code>fs.readFileSync</code>로 읽습니다. 실제 <code>custom-tunnel-2.1.0.vsix</code> 내부를 확인한 결과
+      <code>extension/src/</code> 항목이 <b>0개</b>입니다 → 설치 후 사이드바를 열면 예외로 화면이 뜨지 않습니다.</li>
+    <li><b>인증 부재 (P0):</b> 터널 URL은 8자리 hex(<code>uuidv4().substring(0,8)</code>)뿐이고 서버·클라이언트 어디에도
+      인증·인가·레이트리밋이 없습니다. ID를 알면(또는 대입하면) 누구나 개발자의 로컬 서버에 직접 접근합니다.</li>
+    <li><b>오리진 공유 (P0):</b> 모든 터널이 <code>debug-tool.onrender.com</code> 한 도메인 아래에서
+      <code>tunnelId</code> 쿠키로 라우팅됩니다. 쿠키·localStorage·SW 스코프가 터널 간 공유되고,
+      브라우저 하나로 동시에 두 터널을 쓸 수 없으며, 나중에 연 터널이 앞 탭까지 덮어씁니다.</li>
+  </ul>
+
+  <h4>구조적 판단</h4>
+  <p>핵심 병목은 개별 버그가 아니라 <b>세 가지 설계 결정</b>입니다:
+  ① 요청/응답 전체를 메모리에 버퍼링해 JSON+Base64로 WebSocket에 실어 보내는 <b>비스트리밍 프록시</b>,
+  ② 자식 프로세스 <b>stdout을 정규식으로 파싱하는 IPC</b>,
+  ③ <b>경로가 아닌 쿠키로 터널을 식별</b>하는 라우팅.
+  이 셋이 성능 상한(30초/대용량 불가), 로그 유실, 터널 간 격리 실패를 각각 만들고 있습니다.</p>
+</div>
+
+<!-- ============ 2 ============ -->
+<h2 id="s2"><span class="num">02</span>기술 스택 및 코드베이스 구조</h2>
+
+<div class="grid g3">
+  <div class="card">
+    <h4 style="margin-top:0">VS Code 확장 (Extension Host)</h4>
+    <ul class="tight">
+      <li>TypeScript 4.9 / target ES2020 / CommonJS</li>
+      <li><code>strict: true</code> 활성화</li>
+      <li>VS Code Engine <code>^1.74.0</code></li>
+      <li>WebviewView API + <code>child_process.spawn</code></li>
+      <li>런타임 의존성: <code>ws@^8.14</code>, <code>axios@^1.13</code></li>
+      <li>진입: <code>onStartupFinished</code></li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4 style="margin-top:0">터널 서버 (Render.com)</h4>
+    <ul class="tight">
+      <li>Node.js 18 (Dockerfile: <code>node:18-alpine</code>)</li>
+      <li>Express 4 + <code>ws</code> 8 + <code>cookie-parser</code></li>
+      <li><code>uuid</code> v9 — 터널/요청 ID</li>
+      <li>배포: <code>render.yaml</code> (web, PORT 10000)</li>
+      <li>상태: <b>완전 인메모리</b>, DB 없음</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4 style="margin-top:0">터널 클라이언트 (로컬 자식 프로세스)</h4>
+    <ul class="tight">
+      <li>순수 Node.js 스크립트 (CommonJS)</li>
+      <li><code>ws</code> + <code>axios</code> (arraybuffer)</li>
+      <li>VS Code 내장 Electron 재사용<br>(<code>ELECTRON_RUN_AS_NODE=1</code>)</li>
+      <li>HTTPS 로컬 서버 지원<br>(<code>rejectUnauthorized:false</code>)</li>
+    </ul>
+  </div>
+</div>
+
+<h3>디렉터리 구조 (실측)</h3>
+<pre>debug_tool/
+├── src/                          # 확장 소스 (TS) — 총 706 LOC
+│   ├── extension.ts              #  93  진입점, 5개 커맨드 등록
+│   ├── tunnelManager.ts          # 317  ★핵심: 프로세스 스폰 + stdout 파싱 + 로그 버퍼
+│   ├── tunnelViewProvider.ts     # 289  Webview HTML 생성 + 메시지 브리지
+│   ├── config.ts                 #   7  ⚠ 빌드 시 자동 생성(.gitignore 대상)
+│   └── webview/                  # 1,370 LOC — ⚠ 런타임에 원본 그대로 로드됨
+│       ├── template.html         #  86  CSP 메타 포함
+│       ├── style.css             # 668
+│       └── main.js               # 616  UI 로직 + 필터/검색
+├── custom-tunnel/
+│   ├── server/index.js           # 368  ★Render 배포 릴레이 (HTTP↔WS)
+│   ├── client/index.js           # 420  ★로컬 프록시 + 콘솔 캡처 스크립트 주입
+│   ├── server/{Dockerfile,render.yaml,package.json}
+│   └── client/package.json       # ⚠ 루트와 의존성 중복 정의
+├── scripts/build-config.js       #  24  환경별 서버 URL 하드코딩 생성기
+├── out/                          # tsc 산출물 (webview 리소스는 복사되지 않음)
+├── images/{icon.png,screenshots/}
+├── custom-tunnel-{1.0.0,2.0.0,2.1.0}.vsix   # ⚠ 바이너리 4MB가 저장소에 커밋됨
+└── {README,ARCHITECTURE,CHANGELOG,PUBLISHING_GUIDE,ICON_GUIDE,DEPLOY_TEST}.md</pre>
+
+<div class="note">
+  <b>구조 관찰 —</b> <code>tsconfig.json</code>의 <code>rootDir</code>은 <code>src</code>, <code>outDir</code>은 <code>out</code>이지만
+  <code>.html/.css/.js</code>는 <code>tsc</code>가 복사하지 않습니다. 그래서 <code>tunnelViewProvider</code>는
+  <code>_extensionUri + "src/webview/..."</code>를 직접 참조합니다. 즉 <b>"소스 디렉터리가 곧 런타임 자산 디렉터리"</b>인 구조이며,
+  이것이 아래 P0-1의 근본 원인입니다.
+</div>
+
+<h3>외부 서비스 의존</h3>
+<table>
+  <thead><tr><th>서비스</th><th>용도</th><th>참조 위치</th><th>리스크</th></tr></thead>
+  <tbody>
+    <tr><td><b>Render.com</b> (Free tier 추정)</td><td>터널 릴레이 서버 호스팅</td><td><code>src/config.ts</code>, <code>render.yaml</code></td><td>콜드 스타트 ~50초, 인스턴스 재시작 시 전 터널 소실</td></tr>
+    <tr><td><b>api.qrserver.com</b></td><td>QR 이미지 생성</td><td><code>src/webview/main.js:128</code></td><td><b>비공개 터널 URL이 제3자 서버로 전송됨</b></td></tr>
+    <tr><td><b>cdnjs.cloudflare.com</b></td><td>qrcodejs 1.0.0 로드</td><td><code>template.html:83</code></td><td><b>실제로 사용되지 않는 죽은 스크립트</b> + SRI 미적용 공급망 노출</td></tr>
+  </tbody>
+</table>
+
+<!-- ============ 3 ============ -->
+<h2 id="s3"><span class="num">03</span>시스템 아키텍처 다이어그램</h2>
+
+<div class="diagram">
+<svg viewBox="0 0 1120 640" width="100%" role="img" aria-label="Custom Tunnel 시스템 아키텍처">
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#7aa2f7"/></marker>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#bb9af7"/></marker>
+    <marker id="ag" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#3ddc97"/></marker>
+    <style>
+      .bx{fill:#1b212c;stroke:#2a3240;rx:10}
+      .zn{fill:none;stroke:#3a4556;stroke-dasharray:6 5;rx:14}
+      .t{fill:#e6edf3;font:600 13px -apple-system,sans-serif}
+      .s{fill:#9aa7b8;font:11px ui-monospace,Menlo,monospace}
+      .z{fill:#6e7d90;font:600 11px -apple-system,sans-serif;letter-spacing:.08em}
+      .lb{fill:#7aa2f7;font:10.5px ui-monospace,Menlo,monospace}
+      .lr{fill:#bb9af7;font:10.5px ui-monospace,Menlo,monospace}
+      .lg{fill:#3ddc97;font:10.5px ui-monospace,Menlo,monospace}
+      .e{stroke:#7aa2f7;stroke-width:1.6;fill:none;marker-end:url(#a)}
+      .er{stroke:#bb9af7;stroke-width:1.6;fill:none;marker-end:url(#ar)}
+      .eg{stroke:#3ddc97;stroke-width:1.6;fill:none;marker-end:url(#ag)}
+    </style>
+  </defs>
+
+  <!-- ZONE: 개발자 머신 -->
+  <rect class="zn" x="18" y="40" width="392" height="560"/>
+  <text class="z" x="34" y="62">개발자 머신 (LOCAL)</text>
+
+  <!-- VS Code Extension Host -->
+  <rect class="bx" x="40" y="84" width="348" height="196"/>
+  <text class="t" x="58" y="108">VS Code Extension Host</text>
+  <rect class="bx" x="58" y="122" width="150" height="44" style="fill:#232a36"/>
+  <text class="s" x="70" y="141">extension.ts</text><text class="s" x="70" y="156">activate / 5 commands</text>
+  <rect class="bx" x="220" y="122" width="150" height="44" style="fill:#232a36"/>
+  <text class="s" x="232" y="141">tunnelViewProvider</text><text class="s" x="232" y="156">HTML 생성 · 메시지</text>
+  <rect class="bx" x="58" y="178" width="312" height="52" style="fill:#232a36"/>
+  <text class="s" x="70" y="197">tunnelManager.ts — Map&lt;id,Tunnel&gt; · logs[500] cap</text>
+  <text class="s" x="70" y="213" style="fill:#ff9f43">stdout 정규식 파싱 IPC · 60s 타임아웃</text>
+  <rect class="bx" x="58" y="240" width="312" height="30" style="fill:#232a36"/>
+  <text class="s" x="70" y="259">Webview: template.html + style.css + main.js</text>
+
+  <!-- 터널 클라이언트 -->
+  <rect class="bx" x="40" y="330" width="348" height="106"/>
+  <text class="t" x="58" y="354">터널 클라이언트 (자식 프로세스)</text>
+  <text class="s" x="58" y="374">custom-tunnel/client/index.js</text>
+  <text class="s" x="58" y="391">spawn(process.execPath, ELECTRON_RUN_AS_NODE=1)</text>
+  <text class="s" x="58" y="408" style="fill:#3ddc97">axios → localhost:PORT · HTML에 콘솔 훅 주입</text>
+  <text class="s" x="58" y="425" style="fill:#ff5c5c">재연결 로직 없음 · ws close → process.exit(0)</text>
+
+  <!-- 로컬 개발 서버 -->
+  <rect class="bx" x="40" y="486" width="348" height="86"/>
+  <text class="t" x="58" y="510">로컬 개발 서버 (Vite / Next / 임의)</text>
+  <text class="s" x="58" y="530">http(s)://localhost:&lt;port&gt;</text>
+  <text class="s" x="58" y="548" style="fill:#ff9f43">HTTPS 시 rejectUnauthorized:false</text>
+
+  <!-- 화살표: extension -> client -->
+  <path class="e" d="M214,282 L214,326"/>
+  <text class="lb" x="222" y="308">spawn / stdout</text>
+  <!-- client -> local -->
+  <path class="eg" d="M214,440 L214,482"/>
+  <text class="lg" x="222" y="466">axios HTTP</text>
+
+  <!-- ZONE: Render -->
+  <rect class="zn" x="446" y="40" width="330" height="560"/>
+  <text class="z" x="462" y="62">Render.com (PUBLIC)</text>
+
+  <rect class="bx" x="468" y="84" width="286" height="230"/>
+  <text class="t" x="486" y="108">custom-tunnel/server/index.js</text>
+  <rect class="bx" x="486" y="122" width="250" height="40" style="fill:#232a36"/>
+  <text class="s" x="498" y="140">Express — app.all("*") 프록시</text>
+  <text class="s" x="498" y="155" style="fill:#ff5c5c">인증 없음 · 레이트리밋 없음</text>
+  <rect class="bx" x="486" y="172" width="250" height="40" style="fill:#232a36"/>
+  <text class="s" x="498" y="190">WebSocket.Server (ws)</text>
+  <text class="s" x="498" y="205">tunnelId = uuid.slice(0,8)</text>
+  <rect class="bx" x="486" y="222" width="250" height="38" style="fill:#232a36"/>
+  <text class="s" x="498" y="240">POST /log  ← 브라우저 콘솔 수집</text>
+  <text class="s" x="498" y="254" style="fill:#ff5c5c">tunnelId만 알면 누구나 주입</text>
+  <rect class="bx" x="486" y="270" width="250" height="34" style="fill:#232a36"/>
+  <text class="s" x="498" y="291" style="fill:#ff9f43">STATE: Map tunnels / pendingRequests (인메모리)</text>
+
+  <text class="z" x="468" y="352">라우팅 키 = 쿠키 tunnelId</text>
+  <rect class="bx" x="468" y="364" width="286" height="72" style="fill:#231d28;stroke:#4a3a5c"/>
+  <text class="s" x="486" y="386">/&lt;8hex&gt;/path → 302 redirect + Set-Cookie</text>
+  <text class="s" x="486" y="403">이후 모든 요청은 쿠키로 터널 판별</text>
+  <text class="s" x="486" y="421" style="fill:#ff5c5c">→ 모든 터널이 단일 오리진 공유</text>
+
+  <!-- WS 양방향 -->
+  <path class="er" d="M392,378 L464,378"/>
+  <path class="er" d="M464,398 L392,398"/>
+  <text class="lr" x="396" y="368">WSS (JSON: request/response/log)</text>
+
+  <!-- ZONE: 외부 -->
+  <rect class="zn" x="812" y="40" width="290" height="560"/>
+  <text class="z" x="828" y="62">외부 (INTERNET)</text>
+
+  <rect class="bx" x="834" y="84" width="246" height="112"/>
+  <text class="t" x="852" y="108">모바일 / 외부 브라우저</text>
+  <text class="s" x="852" y="128">https://debug-tool.onrender.com/&lt;id&gt;</text>
+  <text class="s" x="852" y="146" style="fill:#3ddc97">주입 스크립트가 console.* 후킹</text>
+  <text class="s" x="852" y="164">→ fetch POST /log</text>
+  <text class="s" x="852" y="182" style="fill:#ff9f43">CSP·X-Frame-Options 제거된 상태</text>
+
+  <rect class="bx" x="834" y="236" width="246" height="86"/>
+  <text class="t" x="852" y="260">제3자 서비스</text>
+  <text class="s" x="852" y="280">api.qrserver.com (QR 이미지)</text>
+  <text class="s" x="852" y="297">cdnjs.cloudflare.com (미사용)</text>
+  <text class="s" x="852" y="314" style="fill:#ff5c5c">터널 URL 외부 유출 경로</text>
+
+  <path class="e" d="M830,140 L760,140"/>
+  <text class="lb" x="762" y="130">HTTPS</text>
+  <path class="e" d="M760,160 L830,160" style="stroke:#7aa2f7"/>
+
+  <!-- webview -> qrserver -->
+  <path class="e" d="M240,270 C 620,640 780,470 900,330" style="stroke:#ff5c5c;marker-end:none;stroke-dasharray:5 4"/>
+  <text class="s" x="470" y="560" style="fill:#ff5c5c">Webview → api.qrserver.com 으로 터널 URL 평문 전송</text>
+
+  <!-- 범례 -->
+  <text class="s" x="34" y="592" style="fill:#6e7d90">※ 실선=제어/데이터 흐름, 점선 박스=신뢰 경계</text>
+</svg>
+</div>
+<div class="legend">
+  <span><b style="background:#7aa2f7"></b>HTTP 요청 경로</span>
+  <span><b style="background:#bb9af7"></b>WebSocket 터널</span>
+  <span><b style="background:#3ddc97"></b>로컬 프록시</span>
+  <span><b style="background:#ff5c5c"></b>위험 지점</span>
+</div>
+
+<h3>계층 간 관계 요약</h3>
+<table>
+  <thead><tr><th>계층</th><th>구성 요소</th><th>인접 계층과의 통신 수단</th></tr></thead>
+  <tbody>
+    <tr><td>Frontend (Webview)</td><td><code>template.html</code> / <code>main.js</code> / <code>style.css</code></td><td><code>acquireVsCodeApi().postMessage</code> ↔ <code>webview.postMessage</code></td></tr>
+    <tr><td>Extension Host</td><td><code>extension.ts</code> · <code>tunnelViewProvider.ts</code> · <code>tunnelManager.ts</code></td><td>내부 <code>EventEmitter</code> / 자식 프로세스 <b>stdout 텍스트</b></td></tr>
+    <tr><td>Local Agent</td><td><code>custom-tunnel/client/index.js</code></td><td>상위: stdout · 하위: <code>axios</code> HTTP · 원격: <code>wss</code></td></tr>
+    <tr><td>Relay (Backend)</td><td><code>custom-tunnel/server/index.js</code></td><td>Express HTTP(공개) ↔ <code>ws</code> JSON 프레임</td></tr>
+    <tr><td>DB</td><td colspan="2"><b>없음.</b> 모든 상태는 <code>Map</code> 2개(<code>tunnels</code>, <code>pendingRequests</code>)로 프로세스 메모리에만 존재 → 재시작 시 전량 소실, 수평 확장 불가</td></tr>
+  </tbody>
+</table>
+
+<!-- ============ 4 ============ -->
+<h2 id="s4"><span class="num">04</span>주요 데이터 흐름 및 인증/인가 구조</h2>
+
+<h3>A. 터널 시작 흐름</h3>
+<ol class="flow">
+  <li>Webview <code>startTunnel()</code> → <code>postMessage{type:"startTunnel", port, useHttps}</code> <span style="color:var(--fg3)">(main.js:21)</span></li>
+  <li><code>TunnelViewProvider.handleStartTunnel</code> → <code>TunnelManager.startTunnel(port, useHttps)</code></li>
+  <li><code>spawn(process.execPath, [clientPath, port, wsUrl, "https"?])</code> — VS Code 내장 Node 재사용 <span style="color:var(--fg3)">(tunnelManager.ts:60)</span></li>
+  <li>클라이언트가 <code>wss://debug-tool.onrender.com</code>에 접속 → 서버가 <code>uuidv4().substring(0,8)</code>로 ID 발급</li>
+  <li>클라이언트가 <code>🔑 터널 ID: xxxxxxxx</code> / <code>📎 터널 URL: https://…</code>를 <b>stdout에 출력</b></li>
+  <li>확장이 stdout을 정규식 <code>/🔑 터널 ID: ([a-f0-9]{8})/</code>로 파싱 → 성공 시 <code>resolve(tunnel)</code>, 60초 내 실패 시 <code>kill()</code></li>
+  <li>진행률 이벤트(<code>wakeupProgress</code> 10→30→60→80→95)를 Webview 오버레이에 반영</li>
+</ol>
+
+<h3>B. 외부 요청 프록시 흐름</h3>
+<ol class="flow">
+  <li>외부 브라우저가 <code>GET /57725512/foo</code> 접속</li>
+  <li>서버가 경로에서 ID 추출 → <code>Set-Cookie: tunnelId</code> (SameSite=None, Secure) → <b>302 리다이렉트로 <code>/foo</code></b> <span style="color:var(--fg3)">(server:209-218)</span></li>
+  <li>재요청 시 쿠키 → (없으면) <code>?tunnelId</code> → (없으면) <code>Referer</code> 순으로 터널 판별</li>
+  <li>서버가 요청 바디를 <code>body += chunk.toString()</code>로 <b>문자열 누적</b> 후 JSON 프레임으로 WS 전송</li>
+  <li>클라이언트가 헤더 정리(<code>host/connection/content-length/accept-encoding</code> 제거) 후 <code>axios</code>로 로컬 호출 (timeout 25s)</li>
+  <li>확장자·쿼리 기반 Content-Type 보정 → 바이너리·SVG는 Base64, 그 외 UTF-8 문자열</li>
+  <li>HTML 200 응답이면 <code>&lt;/head&gt;</code> 앞에 <b>콘솔 후킹 스크립트 주입</b> + no-cache 메타 삽입</li>
+  <li>보안 헤더(<code>CSP</code>, <code>X-Frame-Options</code>, <code>HSTS</code>) 제거 후 WS로 응답 → 서버가 <code>writeHead</code>+<code>end</code> (30s 타임아웃)</li>
+</ol>
+
+<h3>C. 원격 콘솔 로그 흐름</h3>
+<ol class="flow">
+  <li>주입 스크립트가 <code>document.cookie</code>에서 <code>tunnelId</code> 획득 → <code>console.log/warn/error/info</code> 래핑</li>
+  <li><code>fetch(POST /log, {tunnelId, level, message})</code></li>
+  <li>서버가 <code>tunnels.get(tunnelId)</code>로 WS 조회 → <code>{type:"log"}</code> 전송</li>
+  <li>클라이언트가 <code>🔍 [REMOTE_LOG] {json}</code>을 <b>stdout에 출력</b> (client:47)</li>
+  <li>확장이 stdout 정규식으로 재파싱 → <code>addLog()</code> → 500개 링버퍼 → <code>logAdded</code> 이벤트 → Webview DOM 추가</li>
+</ol>
+<div class="note">3번 흐름은 <b>브라우저 → HTTP → WS → stdout → 정규식 → EventEmitter → postMessage → DOM</b>으로 7단계를 거칩니다.
+중간의 stdout 텍스트 구간은 타입 안전성이 없고 청크 경계에 취약합니다(P1-3 참조).</div>
+
+<h3>인증 / 인가 구조</h3>
+<table>
+  <thead><tr><th>보호 대상</th><th>현재 메커니즘</th><th>평가</th></tr></thead>
+  <tbody>
+    <tr><td>WebSocket 터널 등록</td><td><b>없음</b> — <code>wss.on("connection")</code>에서 무조건 ID 발급 (server:99)</td><td><span class="tag t-p0">P0</span> 누구나 무제한 터널 생성 가능</td></tr>
+    <tr><td>공개 URL 접근</td><td>8자리 hex ID = <b>사실상 bearer token</b>, 만료 없음</td><td><span class="tag t-p0">P0</span> 2<sup>32</sup> 공간, 열거 가능. 접근 로그·차단 없음</td></tr>
+    <tr><td>로그 수집 <code>POST /log</code></td><td><b>없음</b> — 바디의 <code>tunnelId</code>만 신뢰 (server:67)</td><td><span class="tag t-p0">P0</span> 임의 터널에 로그 위조 주입</td></tr>
+    <tr><td>터널 식별 쿠키</td><td><code>httpOnly:false</code>, 24h, SameSite=None</td><td><span class="tag t-p1">P1</span> JS에서 읽기 가능(주입 스크립트가 요구) → XSS 시 탈취</td></tr>
+    <tr><td>Webview → 확장 메시지</td><td>타입 스위치만, 값 검증 없음 (provider:93)</td><td><span class="tag t-p2">P2</span> <code>port</code> 미검증, <code>addLog</code> 임의 주입</td></tr>
+    <tr><td>확장 → 로컬 서버</td><td>항상 <code>localhost:port</code> 고정, HTTPS는 인증서 검증 해제</td><td><span class="tag t-p2">P2</span> 로컬 한정이라 영향 제한적</td></tr>
+  </tbody>
+</table>
+<p><b>결론: 이 시스템에는 인가(authorization) 계층이 존재하지 않습니다.</b> 유일한 방어선은 "URL을 모를 것"이라는 가정(security by obscurity)입니다.</p>
+
+<!-- ============ 5 ============ -->
+<h2 id="s5"><span class="num">05</span>안정성 문제 및 장애 가능성</h2>
+
+<div class="issue p0">
+  <h3><span class="tag t-p0">P0</span> 배포된 VSIX에 Webview 리소스가 없어 확장이 동작하지 않음</h3>
+  <div class="file">.vscodeignore (미커밋 변경) ↔ src/tunnelViewProvider.ts:186-200</div>
+  <dl>
+    <dt>원인</dt><dd><code>.vscodeignore</code>에 <code>src/**</code>가 추가되었으나, <code>_getHtmlForWebview()</code>는 여전히
+      <code>path.join(extensionUri, "src","webview","template.html")</code>을 <code>fs.readFileSync</code>로 읽고,
+      <code>style.css</code>·<code>main.js</code>도 <code>src/webview</code>에서 <code>asWebviewUri</code>로 참조합니다.</dd>
+    <dt>근거</dt><dd><code>unzip -l custom-tunnel-2.1.0.vsix | grep "extension/src"</code> → <b>결과 0건</b>.
+      직전 버전 2.0.0에는 <code>extension/src/webview/main.js</code>가 포함되어 있음(대조 확인).</dd>
+    <dt>영향</dt><dd><b>치명적.</b> 설치 후 사이드바를 여는 순간 <code>ENOENT</code> 예외 → 대시보드 미표시. 기능 전체 사용 불가.</dd>
+    <dt>개선</dt><dd>둘 중 하나. ① <code>.vscodeignore</code>에 <code>!src/webview/**</code> 예외 추가(최소 수정),
+      ② <b>권장:</b> <code>compile</code> 단계에서 webview 자산을 <code>out/webview/</code>로 복사하고 코드 참조 경로를 <code>out</code> 기준으로 변경.
+      추가로 <code>vsce package</code> 후 필수 파일 존재를 검증하는 스모크 스크립트를 CI에 추가.</dd>
+  </dl>
+</div>
+
+<div class="issue p1">
+  <h3><span class="tag t-p1">P1</span> 터널 클라이언트에 재연결 로직이 없고 연결 종료 시 조용히 종료</h3>
+  <div class="file">custom-tunnel/client/index.js:397-411</div>
+  <dl>
+    <dt>원인</dt><dd><code>ws.on("close") → process.exit(0)</code>. 재시도·백오프가 전혀 없습니다.
+      서버 측에도 <code>ping/pong</code> heartbeat가 없어 죽은 연결을 감지하지 못합니다.</dd>
+    <dt>영향</dt><dd>Render 무료 인스턴스 재시작, 네트워크 순단, 프록시 idle timeout 발생 시 터널이 즉시 소멸.
+      사용자는 공유해 둔 URL이 갑자기 503이 되는 것만 목격합니다. 장시간 세션에서 반복 발생 가능성이 높습니다.</dd>
+    <dt>개선</dt><dd>지수 백오프 재연결(최대 N회) + 서버 <code>setInterval</code> ping/pong(30s) + 재연결 시 동일 <code>tunnelId</code> 재사용(<code>?resume=&lt;id&gt;</code>) 지원.
+      확장 측에는 <code>reconnecting</code> 상태를 UI에 노출.</dd>
+  </dl>
+</div>
+
+<div class="issue p1">
+  <h3><span class="tag t-p1">P1</span> stdout 정규식 IPC — 청크 분할 시 로그·ID 유실</h3>
+  <div class="file">src/tunnelManager.ts:73-144</div>
+  <dl>
+    <dt>원인</dt><dd><code>tunnelProcess.stdout.on("data")</code>는 <b>줄 단위가 아니라 임의 바이트 청크</b>를 줍니다.
+      <code>output.match(/🔍 \[REMOTE_LOG\] (.+)/)</code>는 청크당 <b>첫 1건만</b> 매칭하고, JSON이 두 청크에 걸치면 파싱 실패합니다.
+      또한 로그 메시지에 개행이 포함되면 <code>(.+)</code>가 잘려 <code>JSON.parse</code>가 던집니다.</dd>
+    <dt>영향</dt><dd>고빈도 로그 상황에서 <b>로그 유실이 정상 동작</b>이 됩니다. 최악의 경우 터널 ID/URL 라인이 쪼개져
+      60초 타임아웃 후 "터널 시작 실패"로 오인됩니다.</dd>
+    <dt>개선</dt><dd><code>readline.createInterface</code>로 라인 분할 + <code>matchAll</code>로 전건 처리.
+      근본적으로는 <b><code>stdio:["ignore","ignore","ignore","ipc"]</code> + <code>process.send()</code></b>로 구조화 IPC 전환 권장(타입 안전 + 이모지 의존 제거).</dd>
+  </dl>
+</div>
+
+<div class="issue p1">
+  <h3><span class="tag t-p1">P1</span> <code>allOutput</code> 무한 누적 — 장시간 터널에서 메모리 증가</h3>
+  <div class="file">src/tunnelManager.ts:68, 74-75</div>
+  <dl>
+    <dt>원인</dt><dd><code>allOutput += output</code>이 <b>resolve 이후에도</b> 모든 stdout을 계속 문자열에 누적합니다.
+      이 변수는 오직 60초 타임아웃 실패 메시지에만 쓰이지만, 클로저가 프로세스 수명 내내 살아 있습니다.
+      <code>allErrors</code>도 동일합니다.</dd>
+    <dt>영향</dt><dd>원격 콘솔이 활발한 세션에서 확장 호스트 메모리가 단조 증가. 로그가 많은 앱을 몇 시간 물려두면 수백 MB까지 갈 수 있습니다.</dd>
+    <dt>개선</dt><dd><code>resolved === true</code>가 되면 누적 중단, 또는 최근 N KB만 유지하는 링버퍼로 대체.
+      함께 60초 <code>setTimeout</code> 핸들도 성공 시 <code>clearTimeout</code>으로 해제(현재 미해제).</dd>
+  </dl>
+</div>
+
+<div class="issue p1">
+  <h3><span class="tag t-p1">P1</span> WS 연결 종료 시 대기 중이던 HTTP 요청이 30초간 방치</h3>
+  <div class="file">custom-tunnel/server/index.js:152-155, 347-355</div>
+  <dl>
+    <dt>원인</dt><dd><code>ws.on("close")</code>는 <code>tunnels.delete(tunnelId)</code>만 하고,
+      해당 터널을 기다리던 <code>pendingRequests</code> 항목은 정리하지 않습니다. 또한 <code>res.on("close")</code> 경로에서
+      <code>clearTimeout</code>이 호출되지 않아 타이머가 남습니다(<code>finish</code>에서만 해제).</dd>
+    <dt>영향</dt><dd>터널이 끊긴 직후 접속한 사용자는 <b>즉시 503이 아니라 30초 대기 후 504</b>를 받습니다.
+      무료 인스턴스에서는 그 사이 이벤트 루프·소켓이 점유되어 체감 장애가 커집니다.</dd>
+    <dt>개선</dt><dd><code>pendingRequests</code>에 <code>tunnelId</code>를 함께 저장하고 <code>close</code> 시 해당 요청들을 503으로 즉시 종료.
+      타임아웃 핸들도 엔트리에 담아 모든 종료 경로에서 <code>clearTimeout</code>.</dd>
+  </dl>
+</div>
+
+<div class="issue p2">
+  <h3><span class="tag t-p2">P2</span> 응답 헤더를 클라이언트 값 그대로 <code>writeHead</code> — 예외 시 요청이 영구 대기</h3>
+  <div class="file">custom-tunnel/server/index.js:131</div>
+  <dl>
+    <dt>원인</dt><dd>로컬 서버가 비정상 헤더를 반환하면 <code>res.writeHead(statusCode, headers)</code>가 <code>ERR_INVALID_CHAR</code> 등으로 throw.
+      바깥 <code>try</code>에 잡혀 로그만 남고 <code>pendingRequests.delete</code>·응답 전송이 모두 건너뛰어집니다.</dd>
+    <dt>영향</dt><dd>해당 요청은 30초 타임아웃까지 매달립니다. 헤더 이상이 반복되면 pending이 누적됩니다.</dd>
+    <dt>개선</dt><dd>헤더 화이트리스트/새니타이즈 후 설정, <code>try/finally</code>로 항상 pending 정리, 실패 시 502 응답.</dd>
+  </dl>
+</div>
+
+<div class="issue p2">
+  <h3><span class="tag t-p2">P2</span> 인메모리 단일 인스턴스 상태 — 재시작 시 전 터널 동시 소실</h3>
+  <div class="file">custom-tunnel/server/index.js:50-52 · render.yaml</div>
+  <dl>
+    <dt>원인</dt><dd><code>tunnels</code>/<code>pendingRequests</code>가 프로세스 메모리 <code>Map</code>. 영속 계층·세션 스토어 없음.
+      Render 무료 플랜은 유휴 시 슬립되고 배포 시 인스턴스가 교체됩니다.</dd>
+    <dt>영향</dt><dd>배포·슬립·OOM 어느 것이든 <b>모든 활성 터널이 한 번에 끊깁니다.</b> 수평 확장(인스턴스 2대)은 원천적으로 불가.</dd>
+    <dt>개선</dt><dd>단기: 재연결(P1-1)로 자가 복구. 중기: sticky session 또는 Redis Pub/Sub 기반 라우팅으로 다중 인스턴스 대응.
+      최소한 <code>/healthz</code>와 graceful shutdown(진행 중 요청 drain) 추가.</dd>
+  </dl>
+</div>
+
+<div class="issue p3">
+  <h3><span class="tag t-p3">P3</span> <code>refresh()</code>가 Webview HTML 전체를 재생성해 UI 상태를 초기화</h3>
+  <div class="file">src/tunnelViewProvider.ts:148-152</div>
+  <dl>
+    <dt>원인</dt><dd>터널 시작/중지 때마다 <code>webview.html = ...</code>로 문서를 통째로 갈아끼웁니다. 콘솔 펼침 상태, 필터, 검색어, 스크롤 위치가 전부 소실됩니다.
+      <code>retainContextWhenHidden</code>도 설정되어 있지 않아 탭 전환 시 <code>restoreWebviewState()</code>로 로그만 부분 복구합니다.</dd>
+    <dt>영향</dt><dd>터널 2개를 번갈아 쓰면 UX가 계속 리셋됩니다. 기능 장애는 아니지만 체감 품질을 크게 떨어뜨립니다.</dd>
+    <dt>개선</dt><dd>HTML은 1회만 렌더하고 이후에는 <code>postMessage</code>로 터널 목록 델타만 전달해 DOM을 갱신.
+      (<code>main.js</code>에 이미 존재하는 <code>data-action</code> 위임 핸들러가 이 방향을 전제로 작성되어 있으나 현재 미사용 상태)</dd>
+  </dl>
+</div>
+
+<!-- ============ 6 ============ -->
+<h2 id="s6"><span class="num">06</span>성능 병목 및 최적화 가능성</h2>
+
+<div class="issue p1">
+  <h3><span class="tag t-p1">P1</span> 요청·응답 전체 메모리 버퍼링 + JSON/Base64 인코딩 (비스트리밍 프록시)</h3>
+  <div class="file">server/index.js:290-313 · client/index.js:83-227, 361-370</div>
+  <dl>
+    <dt>원인</dt><dd>서버는 요청 바디를 <code>body += chunk.toString()</code>로 전부 모으고, 클라이언트는 응답 전체를 버퍼에 받아
+      바이너리면 Base64(<b>+33% 크기</b>)로 만든 뒤 <code>JSON.stringify</code>하여 단일 WS 프레임으로 보냅니다.</dd>
+    <dt>영향</dt><dd>① 대용량 파일(이미지·번들·동영상)에서 서버/클라이언트 양쪽 메모리 스파이크,
+      ② TTFB가 <b>전체 다운로드 완료 시점</b>까지 지연,
+      ③ SSE·chunked·WebSocket 업그레이드 같은 스트리밍 응답 원천 불가,
+      ④ 25s(client)/30s(server) 타임아웃에 걸리는 요청 다수 발생.</dd>
+    <dt>개선</dt><dd>WS 바이너리 프레임 + 청크 프로토콜(<code>{requestId, seq, fin}</code>)로 전환해 Base64 제거·스트리밍 파이프.
+      단기 완화로는 응답 크기 상한 설정 + 초과 시 명시적 413 반환.</dd>
+  </dl>
+</div>
+
+<div class="issue p1">
+  <h3><span class="tag t-p1">P1</span> 요청 바디를 문자열로 누적 — 바이너리 업로드 손상 + 크기 무제한</h3>
+  <div class="file">custom-tunnel/server/index.js:290-295</div>
+  <dl>
+    <dt>원인</dt><dd><code>chunk.toString()</code>은 UTF-8 디코딩입니다. 이미지·파일 업로드(<code>multipart/form-data</code>) 같은
+      비-UTF8 바이트는 <b>U+FFFD로 치환되어 복구 불가능하게 손상</b>됩니다. 응답 경로에는 Base64가 있지만 요청 경로에는 없습니다.</dd>
+    <dt>영향</dt><dd>파일 업로드 기능이 있는 앱을 터널로 테스트하면 조용히 깨집니다. 동시에 바디 크기 제한이 없어
+      대용량 POST 한 번으로 무료 인스턴스 메모리를 고갈시킬 수 있습니다(DoS).</dd>
+    <dt>개선</dt><dd><code>Buffer.concat(chunks)</code>로 수집 후 Base64 전송(응답과 대칭) 또는 스트리밍 청크.
+      함께 <code>Content-Length</code> 기반 상한(예: 10MB) 검사 후 413 반환.</dd>
+  </dl>
+</div>
+
+<div class="issue p2">
+  <h3><span class="tag t-p2">P2</span> 모든 요청에 302 리다이렉트 추가 — 왕복 1회 증가 및 비-GET 메서드 손상</h3>
+  <div class="file">custom-tunnel/server/index.js:189-218</div>
+  <dl>
+    <dt>원인</dt><dd><code>/&lt;8hex&gt;/path</code> 형태 요청은 쿠키를 심고 <b>무조건 302</b>로 <code>/path</code>에 보냅니다.</dd>
+    <dt>영향</dt><dd>첫 진입마다 RTT 1회 추가(콜드 스타트와 겹치면 체감 지연 큼).
+      더 중요하게는 <code>POST /&lt;id&gt;/api</code> 같은 요청이 302로 처리되어 <b>바디가 유실된 GET으로 재요청</b>됩니다.</dd>
+    <dt>개선</dt><dd><b>주의 — 302 자체는 제거하면 안 됩니다.</b> 이 리다이렉트는 SPA 대응을 위한 의도적 설계입니다.
+      React 앱을 <code>/&lt;id&gt;/</code> 하위에서 서빙하면 <code>&lt;script src="/assets/…"&gt;</code> 같은 절대 경로와
+      React Router의 <code>&lt;Link to="/about"&gt;</code>가 접두사를 잃어 앱이 깨집니다(사용자에게 <code>vite base</code> 설정 변경을 요구해야 함).<br><br>
+      대신 <b>메서드별 분기</b>가 정답입니다: <code>GET</code>/<code>HEAD</code>는 지금처럼 302+쿠키(SPA 진입 보장),
+      <code>POST</code>/<code>PUT</code>/<code>DELETE</code>는 리다이렉트 없이 쿠키만 설정하고 즉시 프록시 → 바디 유실만 해소.
+      리다이렉트·쿠키를 <b>완전히</b> 없애는 것은 서브도메인 라우팅(<code>&lt;id&gt;.tunnel.example.com</code>) 전환 시에만 가능하며, 이는 도메인 소유가 전제입니다.</dd>
+  </dl>
+</div>
+
+<div class="issue p2">
+  <h3><span class="tag t-p2">P2</span> HTML 응답마다 no-cache 메타 강제 주입 — 브라우저 캐시 무력화</h3>
+  <div class="file">custom-tunnel/client/index.js:286-290</div>
+  <dl>
+    <dt>원인</dt><dd>타임스탬프 버전이 붙은 스크립트와 함께 <code>Cache-Control: no-cache, no-store, must-revalidate</code> 메타를 삽입합니다.</dd>
+    <dt>영향</dt><dd>HTML 문서 캐시가 완전히 무력화되어 느린 릴레이를 매번 다시 통과합니다. 모바일 테스트 시 체감 성능 저하.</dd>
+    <dt>개선</dt><dd>주입 스크립트를 상수(캐시 가능)로 만들고 no-store는 개발 중 옵션으로만 노출.</dd>
+  </dl>
+</div>
+
+<div class="issue p3">
+  <h3><span class="tag t-p3">P3</span> 콘솔 로그 렌더링이 O(n) 전체 순회 — 로그 500개에서 필터/검색 지연</h3>
+  <div class="file">src/webview/main.js:391-494</div>
+  <dl>
+    <dt>원인</dt><dd><code>searchLogs</code>/<code>filterLogsFromSelect</code>가 매 입력마다 전체 <code>.console-log-item</code>을 순회하며
+      <code>querySelector</code>로 텍스트를 다시 읽습니다. 디바운스도 없습니다. 두 함수는 서로를 호출해 중복 순회도 발생합니다.</dd>
+    <dt>영향</dt><dd>터널당 최대 500개 × 터널 수만큼 DOM 순회. 타이핑 시 프레임 드랍이 체감될 수 있습니다.</dd>
+    <dt>개선</dt><dd>입력 디바운스(150ms) + 로그 텍스트를 <code>dataset</code>에 미리 캐싱, 또는 가상 스크롤 도입.
+      로그를 JS 배열로 보유하고 필요한 구간만 렌더하는 구조가 근본책입니다.</dd>
+  </dl>
+</div>
+
+<div class="issue p3">
+  <h3><span class="tag t-p3">P3</span> 로그 링버퍼가 <code>Array.shift()</code> — O(n) 이동</h3>
+  <div class="file">src/tunnelManager.ts:265-267</div>
+  <dl>
+    <dt>원인</dt><dd>500개 초과 시 <code>logs.shift()</code>로 앞을 제거. 로그가 초당 수십 건이면 매번 배열 전체가 이동합니다.</dd>
+    <dt>영향</dt><dd>규모상 심각하지 않으나 고빈도 로깅 앱에서 불필요한 CPU 소모.</dd>
+    <dt>개선</dt><dd>고정 크기 원형 버퍼 또는 <code>splice(0, n)</code> 일괄 절삭.</dd>
+  </dl>
+</div>
+
+<!-- ============ 7 ============ -->
+<h2 id="s7"><span class="num">07</span>보안 취약점</h2>
+
+<div class="issue p0">
+  <h3><span class="tag t-p0">P0</span> 인증·인가·레이트리밋 전무 — 로컬 개발 서버가 무방비 노출</h3>
+  <div class="file">custom-tunnel/server/index.js:99-118, 163-361</div>
+  <dl>
+    <dt>원인</dt><dd>터널 ID는 <code>uuidv4().substring(0,8)</code> = 32비트 공간. 이 값 외에 어떤 비밀도 요구하지 않으며
+      만료·회수·접근 로그·IP 제한·요청 속도 제한이 모두 없습니다. WS 연결 자체도 무인증이라 제3자가 임의로 터널을 계속 열 수 있습니다.</dd>
+    <dt>영향</dt><dd><b>치명적.</b> ID가 유출되거나(브라우저 히스토리, Referer, QR 이미지 서비스 로그) 대입되면
+      공격자는 개발자 PC의 로컬 서버 — 대개 인증이 느슨한 개발 환경, 관리자 화면, DB 콘솔 — 에 직접 접근합니다.
+      또한 무제한 터널 생성으로 무료 인스턴스를 고갈시킬 수 있습니다.</dd>
+    <dt>개선</dt><dd>① 터널 생성 시 128비트 이상 secret 발급 후 <b>URL의 서명 토큰 또는 Basic Auth</b>로 접근 검증,
+      ② 터널 TTL(예: 2시간) + 확장에서 갱신, ③ 클라이언트 WS 핸드셰이크에 공유 키/디바이스 토큰 요구,
+      ④ <code>express-rate-limit</code>으로 IP·터널별 속도 제한, ⑤ 접근 로그를 확장 UI에 노출해 사용자가 이상 접근을 인지하도록.</dd>
+  </dl>
+</div>
+
+<div class="issue p0">
+  <h3><span class="tag t-p0">P0</span> 전 터널이 단일 오리진 공유 — 쿠키/스토리지 교차 오염 및 동시 사용 불가</h3>
+  <div class="file">custom-tunnel/server/index.js:200-273 · 브라우저 오리진 모델</div>
+  <dl>
+    <dt>원인</dt><dd>라우팅 키가 경로가 아니라 <b>도메인 전역 쿠키 <code>tunnelId</code></b>(<code>path:"/"</code>, 24h)입니다.
+      모든 터널이 <code>https://debug-tool.onrender.com</code> 하나의 오리진에서 서비스됩니다.</dd>
+    <dt>영향</dt><dd>① <b>기능 결함:</b> 한 브라우저에서 터널 A를 열고 터널 B를 열면 쿠키가 덮여
+      기존 A 탭의 새 요청까지 B의 로컬 서버로 갑니다. ② <b>보안 결함:</b> 서로 다른 개발자의 앱이 동일 오리진을 공유하므로
+      <code>localStorage</code>·<code>sessionStorage</code>·IndexedDB·Service Worker 스코프·쿠키가 상호 접근 가능합니다.
+      한 터널의 앱이 다른 터널 앱의 토큰을 읽을 수 있는 구조입니다. ③ 서로 다른 사용자가 우연히 같은 8hex를 재사용하는 충돌도 방어되지 않습니다.</dd>
+    <dt>개선</dt><dd><b>서브도메인 격리</b>(<code>&lt;id&gt;.tunnel.example.com</code> + 와일드카드 인증서)가 정석입니다.
+      이 경우 쿠키·리다이렉트·Referer fallback 로직이 모두 불필요해져 서버 코드가 크게 단순해집니다.
+      서브도메인이 불가하면 최소한 쿠키 <code>path</code>를 터널 경로로 한정하고 경로 기반 프록시로 되돌려야 합니다.</dd>
+  </dl>
+</div>
+
+<div class="issue p1">
+  <h3><span class="tag t-p1">P1</span> 로컬 서버의 보안 헤더를 프록시가 제거 (보안 다운그레이드)</h3>
+  <div class="file">custom-tunnel/client/index.js:243-247</div>
+  <dl>
+    <dt>원인</dt><dd><code>strict-transport-security</code>, <code>content-security-policy</code>, <code>x-frame-options</code>를 무조건 삭제합니다.
+      주석상 "HTTP 터널 전달 시 SSL 오류 방지" 목적이나, 실제로는 <b>공개 인터넷에 노출되는 응답</b>에서 방어층을 걷어냅니다.</dd>
+    <dt>영향</dt><dd>터널로 노출된 앱은 CSP 없이 서비스되어 XSS 방어가 사라지고, 클릭재킹(iframe 삽입)에도 무방비가 됩니다.
+      P0-2의 오리진 공유와 결합되면 한 터널의 XSS가 다른 터널 앱 데이터까지 노릴 수 있습니다.</dd>
+    <dt>개선</dt><dd>CSP는 제거 대신 <b>재작성</b>(<code>localhost:port</code> → 터널 오리진 치환). <code>X-Frame-Options</code>는 보존.
+      HSTS만 프로토콜 문제로 제거하되 사유를 코드 주석에 명시.</dd>
+  </dl>
+</div>
+
+<div class="issue p1">
+  <h3><span class="tag t-p1">P1</span> <code>POST /log</code> 무인증 — 로그 위조 주입 및 남용</h3>
+  <div class="file">custom-tunnel/server/index.js:67-96</div>
+  <dl>
+    <dt>원인</dt><dd>바디의 <code>tunnelId</code>만 보고 해당 WS로 전달합니다. 인증·오리진 검증·크기 제한·속도 제한 없음.
+      CORS는 <code>Access-Control-Allow-Origin: &lt;요청 Origin&gt;</code> + <code>Allow-Credentials: true</code>로
+      <b>사실상 모든 출처를 허용</b>합니다(server:14-31).</dd>
+    <dt>영향</dt><dd>ID를 아는 누구나 개발자 콘솔에 임의 내용을 밀어 넣을 수 있습니다(피싱 유도 문구, 로그 폭주로 UI 마비).
+      메시지가 서버 <code>console.log</code>에도 그대로 찍혀 <b>로그 인젝션</b>(개행 삽입으로 가짜 로그 라인 위조)이 가능합니다.
+      대용량 메시지 반복 전송 시 확장 호스트 메모리/DOM을 공격할 수 있습니다.</dd>
+    <dt>개선</dt><dd>터널 secret을 헤더로 요구(주입 스크립트가 서버 렌더 시점에 값을 주입), 메시지 길이 상한(예: 8KB),
+      터널별 초당 로그 상한, 서버 로그 출력 시 개행·제어문자 이스케이프.</dd>
+  </dl>
+</div>
+
+<div class="issue p1">
+  <h3><span class="tag t-p1">P1</span> 비공개 터널 URL이 제3자 QR 서비스로 전송됨</h3>
+  <div class="file">src/webview/main.js:126-134 · template.html:83</div>
+  <dl>
+    <dt>원인</dt><dd>QR 생성을 <code>https://api.qrserver.com/v1/create-qr-code/?data=&lt;터널 URL&gt;</code>로 위임합니다.
+      동시에 <code>template.html</code>은 <code>cdnjs</code>의 <code>qrcode.min.js</code>를 로드하지만 <b>코드 어디서도 사용하지 않습니다</b>(죽은 스크립트).</dd>
+    <dt>영향</dt><dd>URL이 사실상 접근 토큰인 상황(P0-1)에서 그 토큰이 외부 서비스의 액세스 로그·CDN·프록시에 남습니다.
+      또한 미사용 CDN 스크립트는 무의미한 공급망 노출(SRI 미적용)입니다.</dd>
+    <dt>개선</dt><dd>QR을 <b>로컬에서 생성</b>(번들된 qrcode 라이브러리 사용 → 마침 이미 로드 중인 라이브러리를 실제로 쓰면 됨),
+      네트워크 요청 제거. 미사용이면 CDN <code>&lt;script&gt;</code> 삭제하고 CSP의 <code>https://cdnjs.cloudflare.com</code>도 제거.</dd>
+  </dl>
+</div>
+
+<div class="issue p2">
+  <h3><span class="tag t-p2">P2</span> Webview HTML 문자열 보간 — 터널 URL이 <code>onclick</code>에 이스케이프 없이 삽입</h3>
+  <div class="file">src/tunnelViewProvider.ts:216, 223-226</div>
+  <dl>
+    <dt>원인</dt><dd><code>onclick="showQRCode('${tunnel.url}')"</code> 형태로 URL을 인라인 핸들러 문자열에 직접 넣습니다.
+      로그 메시지에는 <code>escapeHtml</code>이 적용되어 있으나 URL에는 없습니다. URL 값은 <b>원격 서버가 보낸 문자열</b>을
+      정규식으로 추출한 것입니다(<code>tunnelManager.ts:113</code>).</dd>
+    <dt>영향</dt><dd>터널 서버가 침해되거나 MITM되면 <code>'); ...; //</code> 형태 페이로드로 Webview 컨텍스트에서 스크립트 실행 가능.
+      Webview는 <code>enableScripts:true</code>이고 확장 호스트로 <code>postMessage</code>를 보낼 수 있어(터널 시작/중지 등) 영향이 확대됩니다.
+      CSP에 <code>'unsafe-inline'</code>이 허용되어 있어 방어되지 않습니다.</dd>
+    <dt>개선</dt><dd>인라인 <code>onclick</code>을 제거하고 <code>data-*</code> 속성 + 이벤트 위임으로 전환
+      (<code>main.js:569-599</code>에 이미 구현되어 있으나 현재 사용되지 않음 — 이 미사용 코드를 활성화하면 해결).
+      URL은 <code>new URL()</code>로 파싱해 스킴·호스트를 검증한 뒤 사용. CSP에서 <code>'unsafe-inline'</code> 제거 + nonce 적용.</dd>
+  </dl>
+</div>
+
+<div class="issue p2">
+  <h3><span class="tag t-p2">P2</span> 원격이 지정한 경로를 검증 없이 로컬 URL로 연결</h3>
+  <div class="file">custom-tunnel/client/index.js:85</div>
+  <dl>
+    <dt>원인</dt><dd><code>url: `${protocol}://localhost:${localPort}${url}`</code> — <code>url</code>은 서버가 보낸 문자열이며
+      <code>/</code>로 시작하는지 검증하지 않습니다.</dd>
+    <dt>영향</dt><dd>정상 경로에서는 문제가 없지만, 터널 서버가 침해된 경우 로컬 클라이언트를 임의 목적지로 유도하려는
+      시도(URL userinfo 트릭 등)에 대한 방어선이 없습니다. 신뢰 경계가 명시되지 않은 지점입니다.</dd>
+    <dt>개선</dt><dd><code>url.startsWith("/") &amp;&amp; !url.startsWith("//")</code> 검증 후
+      <code>new URL(path, `http://localhost:${port}`)</code>로 안전하게 조립.</dd>
+  </dl>
+</div>
+
+<div class="issue p2">
+  <h3><span class="tag t-p2">P2</span> HTTPS 로컬 서버에 대한 인증서 검증 무조건 해제</h3>
+  <div class="file">custom-tunnel/client/index.js:72</div>
+  <dl>
+    <dt>원인</dt><dd><code>rejectUnauthorized: false</code>가 항상 적용됩니다(자체 서명 인증서 지원 목적).</dd>
+    <dt>영향</dt><dd>목적지가 <code>localhost</code>로 고정되어 실제 위험은 낮으나, 향후 원격 대상 지원 시 그대로 남으면 MITM에 노출됩니다.</dd>
+    <dt>개선</dt><dd>호스트가 localhost/127.0.0.1인 경우로 한정하고, 옵션화 + 경고 로그 출력.</dd>
+  </dl>
+</div>
+
+<div class="issue p3">
+  <h3><span class="tag t-p3">P3</span> Webview → 확장 메시지 입력 미검증</h3>
+  <div class="file">src/tunnelViewProvider.ts:93-119</div>
+  <dl>
+    <dt>원인</dt><dd><code>data.port</code>를 범위 검증 없이 <code>startTunnel</code>에 전달(커맨드 팔레트 경로에는 1-65535 검증이 있으나 Webview 경로에는 없음).
+      <code>addLog</code>도 임의 tunnelId·내용을 그대로 수용합니다.</dd>
+    <dt>영향</dt><dd>비정상 포트가 프로세스 인자로 전달되어 무의미한 spawn·60초 대기 발생. 보안 영향은 제한적.</dd>
+    <dt>개선</dt><dd>메시지 스키마 검증 함수(포트 정수·범위, tunnelId 형식 <code>^[a-f0-9]{8}$</code>)를 공통화.</dd>
+  </dl>
+</div>
+
+<!-- ============ 8 ============ -->
+<h2 id="s8"><span class="num">08</span>코드 품질 및 유지보수성</h2>
+
+<table>
+  <thead><tr><th>항목</th><th>현황</th><th>영향</th><th>개선</th></tr></thead>
+  <tbody>
+  <tr>
+    <td><b>테스트 0개</b></td>
+    <td><code>package.json</code>의 <code>test</code>는 <code>node ./out/test/runTest.js</code>를 가리키지만
+      <code>src/test</code>·<code>out/test</code> 모두 존재하지 않음. <code>pretest</code>가 부르는 <code>lint</code>도
+      <code>.eslintrc</code> 설정 파일이 저장소에 없음</td>
+    <td><span class="tag t-p1">P1</span> 리팩터링 시 회귀를 잡을 수단 전무. P0-1 같은 패키징 사고가 릴리스까지 통과</td>
+    <td>@vscode/test-electron 기본 하네스 복구 + 서버/클라이언트 단위 테스트(supertest·ws mock) + VSIX 스모크 검증</td>
+  </tr>
+  <tr>
+    <td><b>거대 함수</b></td>
+    <td><code>TunnelManager.startTunnel</code> 196줄 단일 Promise, <code>client/index.js</code>의 메시지 핸들러 ~360줄,
+      <code>server/index.js</code>의 <code>app.all("*")</code> ~200줄</td>
+    <td><span class="tag t-p2">P2</span> 분기가 많아 상태 추적이 어렵고 부분 테스트 불가</td>
+    <td>모듈 분리: 터널 ID 판별 / 헤더 정리 / Content-Type 보정 / 스크립트 주입을 각각 순수 함수로 추출</td>
+  </tr>
+  <tr>
+    <td><b>Content-Type 보정 하드코딩</b></td>
+    <td>확장자·Vite 쿼리(<code>?import</code>,<code>?raw</code>…)별 if-else 체인 60여 줄 (client:105-182).
+      <code>queryString.includes("url")</code>는 <code>?callbackUrl=</code> 같은 일반 쿼리에도 오탐 매칭</td>
+    <td><span class="tag t-p2">P2</span> 번들러 버전이 바뀌면 조용히 깨짐. 오탐 시 정상 리소스가 JS로 잘못 서빙됨</td>
+    <td><code>mime-types</code> 패키지 + 정확한 쿼리 키 매칭(<code>URLSearchParams.has()</code>)으로 대체</td>
+  </tr>
+  <tr>
+    <td><b>죽은 코드</b></td>
+    <td><code>main.js:569-616</code>의 <code>data-action</code> 위임 핸들러(제공되는 HTML에는 해당 속성이 없음),
+      cdnjs qrcodejs 스크립트, <code>server/index.js:34-45</code>의 USE_HTTPS 분기(양쪽 모두 http),
+      <code>client/index.js</code>의 <code>socketPath:undefined</code>·<code>onDownloadProgress:undefined</code></td>
+    <td><span class="tag t-p3">P3</span> "구현되어 있다"는 착시. 실제 동작과 코드의 괴리</td>
+    <td>제거하거나(cdnjs, USE_HTTPS) 활성화(data-action → 인라인 onclick 대체, P2 XSS도 동시 해결)</td>
+  </tr>
+  <tr>
+    <td><b>의존성 중복 정의</b></td>
+    <td>루트 <code>package.json</code>(<code>axios ^1.13</code>, <code>ws ^8.14</code>)과
+      <code>custom-tunnel/client/package.json</code>(<code>axios ^1.6</code>)이 따로 존재.
+      VSIX 안에 <code>extension/node_modules</code>와 <code>extension/custom-tunnel/client/node_modules</code>가 <b>둘 다</b> 포함됨(확인함)</td>
+    <td><span class="tag t-p2">P2</span> 버전 드리프트 + 패키지 크기 중복(현재 VSIX 408 파일, 압축 전 3.3MB)</td>
+    <td>npm workspaces로 통합하거나, 클라이언트를 esbuild로 단일 파일 번들링해 <code>node_modules</code> 동봉 제거</td>
+  </tr>
+  <tr>
+    <td><b>릴리스 산출물 배포 경로 부재</b></td>
+    <td><code>custom-tunnel-{1.0.0,2.0.0,2.1.0}.vsix</code> 약 4.1MB가 작업 디렉터리에 쌓여 있음.
+      <code>.gitignore</code>의 <code>*.vsix</code>로 <b>git 추적은 되지 않음</b>(<code>git ls-files</code> 확인).
+      즉 배포용 아티팩트를 공유하는 공식 경로가 없고 로컬 파일로만 존재</td>
+    <td><span class="tag t-p3">P3</span> 사용자가 특정 버전 VSIX를 받을 방법이 없음(README는 파일 다운로드를 안내하나 저장소에 없음). 구버전 누적</td>
+    <td>GitHub Releases에 태그별 VSIX 첨부 + README 링크를 Releases로 변경. 로컬 구버전은 정리</td>
+  </tr>
+  <tr>
+    <td><b>문서-코드 불일치</b></td>
+    <td><code>ARCHITECTURE.md</code>는 "서버가 SVG QR 코드를 반환"한다고 기술하나 실제로는 외부 API 이미지 사용.
+      서버 스택에 <code>qrcode</code> 패키지가 있다고 적혀 있으나 <code>server/package.json</code>에 없음.
+      <code>README</code>의 스크린샷 경로(<code>01-active-tunnel.png</code> 등)와 실제 파일명(<code>04-active-tunnel.png</code> 등)이 불일치</td>
+    <td><span class="tag t-p3">P3</span> 신규 기여자가 잘못된 모델을 학습. README 이미지 깨짐</td>
+    <td>문서 갱신 + README 이미지 링크 수정(현재 <code>images/screenshots/</code>에는 00,04,05,06만 존재)</td>
+  </tr>
+  <tr>
+    <td><b>환경 설정 방식</b></td>
+    <td>서버 URL을 <code>scripts/build-config.js</code>가 <b>빌드 타임에 하드코딩</b>해 <code>src/config.ts</code> 생성(gitignore 대상)</td>
+    <td><span class="tag t-p2">P2</span> 사용자가 자체 서버로 전환할 수 없음. 재빌드 없이는 URL 변경 불가</td>
+    <td><code>contributes.configuration</code>으로 <code>customTunnel.serverUrl</code> 설정 노출, 빌드 값은 기본값으로만 사용</td>
+  </tr>
+  <tr>
+    <td><b>로깅 규율</b></td>
+    <td>서버가 요청·쿠키·Referer 전체를 <code>console.log</code>로 출력(<code>server:210, 263, 270</code>).
+      확장도 <code>console.log</code> 직접 사용(OutputChannel 미사용)</td>
+    <td><span class="tag t-p1">P1</span> <b>쿠키 전문이 플랫폼 로그에 평문 기록</b> — 민감정보 유출 경로. 레벨 구분·마스킹 없음</td>
+    <td>구조화 로거(pino) + 레벨 기반 출력 + 쿠키/헤더 마스킹. 확장은 <code>window.createOutputChannel</code> 사용</td>
+  </tr>
+  </tbody>
+</table>
+
+<h3>테스트 · 로깅 · 모니터링 · 배포 개선안</h3>
+<div class="grid g2">
+  <div class="card">
+    <h4 style="margin-top:0">테스트</h4>
+    <ul class="tight">
+      <li><b>단위:</b> 순수 함수로 추출 후 테스트 — 터널 ID 판별(경로/쿠키/쿼리/Referer 4분기), Content-Type 보정, 헤더 정리</li>
+      <li><b>통합:</b> 로컬에서 server+client+더미 앱을 띄우고 텍스트/바이너리/업로드/리다이렉트/대용량 시나리오 검증</li>
+      <li><b>회귀 필수 케이스:</b> 바이너리 업로드 무결성, POST가 302로 깨지지 않는지, 동시 터널 2개 격리</li>
+      <li><b>패키징 스모크:</b> <code>vsce package</code> 결과에 <code>template.html/style.css/main.js/client/index.js</code>가 있는지 CI에서 assert (P0-1 재발 방지)</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4 style="margin-top:0">로깅 / 모니터링</h4>
+    <ul class="tight">
+      <li>서버: pino + <code>LOG_LEVEL</code> 환경변수, 쿠키·Authorization 마스킹</li>
+      <li>메트릭: 활성 터널 수, pending 요청 수, 요청 지연 p50/p95, 타임아웃 비율, WS 재연결 횟수</li>
+      <li><code>/healthz</code>(liveness) + <code>/metrics</code> 분리 — 현재 <code>GET /log</code>가 상태 확인을 겸하는 임시 구조</li>
+      <li>확장: <code>OutputChannel("Custom Tunnel")</code>로 사용자가 진단 로그를 직접 확인 가능하게</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4 style="margin-top:0">배포 (서버)</h4>
+    <ul class="tight">
+      <li><code>render.yaml</code>은 <code>env: node</code>인데 <code>Dockerfile</code>도 존재 — 실제 사용 경로가 불명확. 하나로 통일</li>
+      <li><code>Dockerfile</code> <code>EXPOSE 8080</code> vs <code>render.yaml</code> <code>PORT 10000</code> 불일치(코드는 <code>process.env.PORT</code>를 쓰므로 동작은 하나 혼란 유발)</li>
+      <li><code>npm ci --only=production</code>은 deprecated → <code>npm ci --omit=dev</code></li>
+      <li>non-root 유저 실행, <code>HEALTHCHECK</code> 추가, graceful shutdown(SIGTERM에서 WS·pending drain)</li>
+      <li>무료 플랜 콜드 스타트(~50초)가 UX의 핵심 병목 — 유료 전환 또는 keep-alive 워커 검토</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4 style="margin-top:0">배포 (확장)</h4>
+    <ul class="tight">
+      <li>GitHub Actions: <code>compile → lint → test → package → VSIX 내용 검증</code> 파이프라인</li>
+      <li><code>vscode:prepublish</code>가 현재 <code>echo 'Skipping...'</code> — <b>컴파일 없이 패키징될 위험</b>. <code>npm run compile</code>로 복구 권장</li>
+      <li><code>package</code> 스크립트의 <code>yes |</code> 파이프는 경고를 무조건 승인 — P0-1을 가린 원인 중 하나</li>
+      <li>CHANGELOG가 1.0.0에서 멈춤(현재 2.1.0) — 릴리스 노트 자동화</li>
+    </ul>
+  </div>
+</div>
+
+<h3 id="good">잘 구현되어 있는 부분</h3>
+<div class="good"><b>VS Code 내장 Node 재사용</b> — <code>spawn(process.execPath, …, {ELECTRON_RUN_AS_NODE:"1"})</code>로
+사용자 PC에 Node가 없거나 nvm으로 PATH가 꼬여도 동작합니다(<code>tunnelManager.ts:60</code>). 실제 <code>spawn ENOENT</code> 이슈를 겪고 도출한 해법으로 보이며, 배포형 확장에서 매우 실용적인 선택입니다.</div>
+<div class="good"><b>사용자 체감을 고려한 진행률 UX</b> — Render 콜드 스타트를 숨기지 않고 10→30→60→80→95% 단계와 경과 시간을 노출하고, 취소 버튼(<code>cancelPendingTunnel</code>)까지 제공합니다. 제약을 UX로 흡수한 좋은 사례입니다.</div>
+<div class="good"><b>로그 XSS 방어</b> — 확장 측 <code>escapeHtml()</code>(provider:171)과 Webview 측 <code>textContent</code> 기반 이스케이프(main.js:540)가 <b>양쪽 모두</b> 적용되어, 원격 콘솔 메시지 경로는 방어되어 있습니다.</div>
+<div class="good"><b>리소스 정리 규율</b> — <code>dispose()</code>에서 pending 프로세스와 활성 터널을 모두 <code>kill</code>하고 리스너를 해제합니다(tunnelManager:301). 확장 비활성화 시 좀비 프로세스가 남지 않습니다.</div>
+<div class="good"><b>바이너리 응답 Base64 처리와 SVG 예외 처리</b> — 이미지·폰트·wasm을 Base64로 왕복시키고 SVG를 별도로 다루는 판단(client:184-212)은 텍스트 전용 프록시에서 흔히 놓치는 부분입니다.</div>
+<div class="good"><b>TypeScript strict 모드 + 명확한 도메인 타입</b> — <code>Tunnel</code>/<code>ConsoleLog</code> 인터페이스가 정의되어 있고 <code>strict:true</code>가 켜져 있습니다. 확장 레이어의 타입 안전성은 양호합니다.</div>
+<div class="good"><b>문서화 습관</b> — ARCHITECTURE / PUBLISHING_GUIDE / ICON_GUIDE / DEPLOY_TEST / RENDER_DEPLOY 등 3,000줄 규모 프로젝트 치고 문서가 충실합니다(일부 내용 갱신은 필요).</div>
+
+<!-- ============ 9 ============ -->
+<h2 id="s9"><span class="num">09</span>주요 문제 Top 10</h2>
+<table>
+  <thead><tr><th style="width:34px">#</th><th style="width:64px">우선</th><th>문제</th><th>위치</th><th>영향</th></tr></thead>
+  <tbody>
+    <tr><td><b>1</b></td><td><span class="tag t-p0">P0</span></td><td>VSIX에 webview 리소스 누락 → 확장 실행 불가</td><td><code>.vscodeignore</code> ↔ <code>tunnelViewProvider.ts:186</code></td><td>릴리스 2.1.0 전면 장애</td></tr>
+    <tr><td><b>2</b></td><td><span class="tag t-p0">P0</span></td><td>인증·인가·레이트리밋 부재, 8hex ID가 유일한 비밀</td><td><code>server/index.js:99,163</code></td><td>로컬 개발 서버 무단 접근</td></tr>
+    <tr><td><b>3</b></td><td><span class="tag t-p0">P0</span></td><td>전 터널 단일 오리진 공유 + 쿠키 라우팅</td><td><code>server/index.js:200-273</code></td><td>터널 간 스토리지 침범, 동시 사용 불가</td></tr>
+    <tr><td><b>4</b></td><td><span class="tag t-p1">P1</span></td><td>WS 재연결 없음 → 순단 시 터널 영구 소멸</td><td><code>client/index.js:397</code></td><td>세션 중단, 공유 URL 무효화</td></tr>
+    <tr><td><b>5</b></td><td><span class="tag t-p1">P1</span></td><td>요청 바디 문자열 누적 → 바이너리 업로드 손상 + 크기 무제한</td><td><code>server/index.js:290</code></td><td>파일 업로드 실패, 메모리 DoS</td></tr>
+    <tr><td><b>6</b></td><td><span class="tag t-p1">P1</span></td><td>보안 헤더(CSP/XFO/HSTS) 제거</td><td><code>client/index.js:243</code></td><td>XSS·클릭재킹 방어 상실</td></tr>
+    <tr><td><b>7</b></td><td><span class="tag t-p1">P1</span></td><td>stdout 정규식 IPC + <code>allOutput</code> 무한 누적</td><td><code>tunnelManager.ts:68,124</code></td><td>로그 유실, 메모리 누수</td></tr>
+    <tr><td><b>8</b></td><td><span class="tag t-p1">P1</span></td><td><code>POST /log</code> 무인증 + 전체 오리진 CORS + 쿠키 평문 로깅</td><td><code>server/index.js:14,67,210</code></td><td>로그 위조·폭주, 민감정보 노출</td></tr>
+    <tr><td><b>9</b></td><td><span class="tag t-p2">P2</span></td><td>비스트리밍 프록시(전체 버퍼 + Base64 + JSON)</td><td><code>client/index.js:361</code></td><td>대용량·SSE 불가, 30초 상한</td></tr>
+    <tr><td><b>10</b></td><td><span class="tag t-p2">P2</span></td><td>테스트 0개 + 존재하지 않는 test 스크립트 + CI 없음</td><td><code>package.json</code></td><td>#1 같은 사고가 릴리스까지 통과</td></tr>
+  </tbody>
+</table>
+
+<!-- ============ 10 ============ -->
+<h2 id="s10"><span class="num">10</span>Quick Wins <span style="font-size:14px;color:var(--fg3);font-weight:400">— 각 30분 이내, 효과 대비 비용 최상</span></h2>
+<table>
+  <thead><tr><th style="width:34px">#</th><th>조치</th><th>파일</th><th>예상</th><th>효과</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td><code>.vscodeignore</code>에 <code>!src/webview/**</code> 예외 추가 → 재패키징 후 <code>unzip -l</code>로 검증</td><td><code>.vscodeignore</code></td><td>10분</td><td><b>확장 복구 (P0)</b></td></tr>
+    <tr><td>2</td><td>미사용 cdnjs qrcode 스크립트 태그 삭제 + CSP에서 해당 출처 제거</td><td><code>template.html:83,10</code></td><td>5분</td><td>공급망 노출 제거</td></tr>
+    <tr><td>3</td><td><code>express.json({limit:"64kb"})</code> 적용 + 로그 메시지 길이 상한</td><td><code>server/index.js:67</code></td><td>10분</td><td>메모리 DoS 완화</td></tr>
+    <tr><td>4</td><td>요청 바디 <code>Buffer.concat</code> + Base64 전송으로 교체</td><td><code>server/index.js:290</code></td><td>25분</td><td><b>업로드 손상 해결</b></td></tr>
+    <tr><td>5</td><td><code>allOutput</code>을 resolve 이후 누적 중단 + 60초 타이머 <code>clearTimeout</code></td><td><code>tunnelManager.ts:68,233</code></td><td>10분</td><td>메모리 누수 제거</td></tr>
+    <tr><td>6</td><td>서버 로그에서 쿠키·Referer 전문 출력 제거/마스킹</td><td><code>server/index.js:210,263,270</code></td><td>10분</td><td>민감정보 노출 차단</td></tr>
+    <tr><td>7</td><td><code>ws.on("close")</code>에서 해당 터널의 pending 요청 즉시 503 종료</td><td><code>server/index.js:152</code></td><td>20분</td><td>30초 행 → 즉시 응답</td></tr>
+    <tr><td>8</td><td>WS heartbeat(<code>ping</code> 30s + <code>pong</code> 미수신 시 terminate)</td><td><code>server/index.js:99</code></td><td>20분</td><td>죽은 터널 조기 정리</td></tr>
+    <tr><td>9</td><td><code>express-rate-limit</code>을 <code>/log</code>와 프록시에 적용</td><td><code>server/index.js</code></td><td>20분</td><td>남용 완화</td></tr>
+    <tr><td>10</td><td>인라인 <code>onclick</code> → 이미 존재하는 <code>data-action</code> 위임 핸들러 활성화</td><td><code>tunnelViewProvider.ts:223</code></td><td>25분</td><td>XSS 표면 제거 + 죽은 코드 회수</td></tr>
+    <tr><td>11</td><td>QR을 번들 라이브러리로 로컬 생성 (외부 API 호출 제거)</td><td><code>main.js:126</code></td><td>30분</td><td><b>터널 URL 외부 유출 차단</b></td></tr>
+    <tr><td>12</td><td><code>vscode:prepublish</code>를 <code>npm run compile</code>로 복구</td><td><code>package.json</code></td><td>2분</td><td>미컴파일 배포 방지</td></tr>
+    <tr><td>13</td><td>README 스크린샷 경로를 실제 파일명(00/04/05/06)에 맞게 수정</td><td><code>README.md</code></td><td>5분</td><td>문서 이미지 복구</td></tr>
+  </tbody>
+</table>
+
+<!-- ============ 11 ============ -->
+<h2 id="s11"><span class="num">11</span>개선 우선순위 (P0~P3)</h2>
+
+<div class="card">
+  <h3 style="margin-top:0"><span class="tag t-p0">P0</span> 즉시 — 릴리스 차단 / 실사용자 위험</h3>
+  <ul class="tight">
+    <li>VSIX webview 리소스 누락 복구 및 패키징 검증 자동화</li>
+    <li>터널 접근 인증 도입(서명 토큰 또는 Basic Auth) + 터널 TTL</li>
+    <li>터널 오리진 격리(서브도메인 전환) 또는 최소한 쿠키 라우팅의 교차 오염 차단</li>
+    <li>WS 연결 인증(공유 키) — 무제한 터널 생성 차단</li>
+  </ul>
+</div>
+<div class="card">
+  <h3 style="margin-top:0"><span class="tag t-p1">P1</span> 단기(1~2주) — 안정성·보안 기반</h3>
+  <ul class="tight">
+    <li>클라이언트 자동 재연결 + 서버 heartbeat + 터널 ID resume</li>
+    <li>요청 바디 바이너리 안전 처리 + 크기 상한</li>
+    <li>보안 헤더 제거 → 재작성 정책으로 변경(CSP 치환, XFO 보존)</li>
+    <li><code>/log</code> 인증·레이트리밋·길이 제한, CORS를 실제 필요한 출처로 축소</li>
+    <li>stdout IPC → <code>process.send()</code> 구조화 IPC, <code>allOutput</code> 누수 제거</li>
+    <li>서버 로그 마스킹 + 구조화 로거 도입</li>
+    <li>최소 통합 테스트(텍스트/바이너리/업로드/동시 터널) + CI 파이프라인</li>
+  </ul>
+</div>
+<div class="card">
+  <h3 style="margin-top:0"><span class="tag t-p2">P2</span> 중기(1~2개월) — 성능·구조</h3>
+  <ul class="tight">
+    <li>스트리밍 프록시 전환(WS 바이너리 청크 프로토콜, Base64 제거) → SSE·대용량 지원</li>
+    <li>비-GET 요청만 302 제외해 바디 유실 해결 (GET의 302는 SPA 대응상 유지 필수)</li>
+    <li>Webview 증분 렌더링(전체 HTML 재생성 폐기) + 상태 보존</li>
+    <li>Content-Type 보정을 <code>mime-types</code> + 정확한 쿼리 매칭으로 대체</li>
+    <li>서버 URL을 <code>contributes.configuration</code> 설정으로 노출(자체 호스팅 지원)</li>
+    <li>의존성 통합(workspaces 또는 esbuild 번들) + VSIX 슬림화</li>
+    <li>거대 함수 모듈 분리 및 단위 테스트 확보</li>
+  </ul>
+</div>
+<div class="card">
+  <h3 style="margin-top:0"><span class="tag t-p3">P3</span> 장기 — 품질·운영 성숙도</h3>
+  <ul class="tight">
+    <li>다중 인스턴스 대응(Redis Pub/Sub 라우팅) 및 콜드 스타트 해소</li>
+    <li>로그 가상 스크롤·디바운스, 링버퍼 최적화</li>
+    <li>죽은 코드 제거(USE_HTTPS 분기 등), 문서-코드 동기화</li>
+    <li>VSIX 배포를 GitHub Releases로 공식화(현재 로컬 파일로만 존재)</li>
+    <li>메트릭·대시보드, 접근 로그의 확장 UI 노출</li>
+  </ul>
+</div>
+
+<!-- ============ 12 ============ -->
+<h2 id="s12"><span class="num">12</span>단계별 개선 로드맵</h2>
+<div class="grid g2">
+  <div class="phase">
+    <h4>Phase 1 — 지혈</h4>
+    <div class="when">1주 · 목표: "설치하면 동작하고, 켜둬도 위험하지 않다"</div>
+    <ul class="tight">
+      <li>P0-1 패키징 복구 + VSIX 내용 검증 스크립트</li>
+      <li>Quick Wins 13건 일괄 적용</li>
+      <li><code>2.1.1</code> 핫픽스 릴리스 및 CHANGELOG 갱신</li>
+    </ul>
+    <p style="margin:10px 0 0;color:var(--fg3);font-size:12.5px"><b>완료 기준:</b> 새 VSIX를 클린 환경에 설치 → 터널 생성 → 모바일 접속 → 콘솔 로그 수신까지 성공</p>
+  </div>
+  <div class="phase">
+    <h4>Phase 2 — 보안 기반</h4>
+    <div class="when">2~3주 · 목표: "URL을 모른다"에 의존하지 않는다</div>
+    <ul class="tight">
+      <li>터널 secret + 서명 토큰 접근 제어, TTL·수동 폐기</li>
+      <li>WS 핸드셰이크 인증, 터널 수 상한</li>
+      <li>보안 헤더 재작성 정책, <code>/log</code> 인증·제한</li>
+      <li>로그 마스킹 + 구조화 로거 + <code>/healthz</code></li>
+    </ul>
+    <p style="margin:10px 0 0;color:var(--fg3);font-size:12.5px"><b>완료 기준:</b> 토큰 없는 요청은 401, ID 대입 시도가 레이트리밋에 차단됨을 테스트로 증명</p>
+  </div>
+  <div class="phase">
+    <h4>Phase 3 — 안정성 &amp; 격리</h4>
+    <div class="when">3~5주 · 목표: "끊겨도 알아서 살아난다"</div>
+    <ul class="tight">
+      <li>자동 재연결 + heartbeat + 세션 resume</li>
+      <li>서브도메인 라우팅 전환(오리진 격리, 리다이렉트·쿠키 제거)</li>
+      <li>구조화 IPC 전환, pending 요청 생명주기 정리</li>
+      <li>통합 테스트 스위트 + GitHub Actions CI</li>
+    </ul>
+    <p style="margin:10px 0 0;color:var(--fg3);font-size:12.5px"><b>완료 기준:</b> 서버 강제 재시작 후 30초 내 동일 URL로 자동 복구, 동시 터널 2개 독립 동작</p>
+  </div>
+  <div class="phase">
+    <h4>Phase 4 — 성능 &amp; 확장</h4>
+    <div class="when">6주+ · 목표: "실제 앱을 그대로 태울 수 있다"</div>
+    <ul class="tight">
+      <li>스트리밍 청크 프로토콜(Base64 폐기, SSE·대용량 지원)</li>
+      <li>Webview 증분 렌더링 + 가상 스크롤</li>
+      <li>다중 인스턴스 라우팅, 콜드 스타트 해소</li>
+      <li>의존성 통합·번들링으로 VSIX 슬림화</li>
+    </ul>
+    <p style="margin:10px 0 0;color:var(--fg3);font-size:12.5px"><b>완료 기준:</b> 50MB 파일 다운로드·업로드 성공, SSE 스트림 유지, p95 지연 목표 달성</p>
+  </div>
+</div>
+
+<!-- ============ 13 ============ -->
+<h2 id="s13"><span class="num">13</span>종합 점수</h2>
+<div class="grid g3">
+  <div class="score">
+    <div class="top"><span class="n">Architecture</span><span class="s" style="color:var(--p2)">55</span></div>
+    <div class="bar"><i style="width:55%;background:linear-gradient(90deg,#ffd93d,#ff9f43)"></i></div>
+    <div class="c">계층 분리와 책임 경계는 명확하나, 쿠키 기반 라우팅·비스트리밍 프록시·stdout IPC 세 가지 결정이 상한을 만듦. DB·상태 계층 부재로 확장 불가.</div>
+  </div>
+  <div class="score">
+    <div class="top"><span class="n">Stability</span><span class="s" style="color:var(--p1)">38</span></div>
+    <div class="bar"><i style="width:38%;background:linear-gradient(90deg,#ff9f43,#ff5c5c)"></i></div>
+    <div class="c">배포 산출물이 실행 불가 상태(P0). 재연결 없음, 인메모리 단일 인스턴스, pending 요청 미정리, 메모리 누수 2건. dispose 정리 규율은 양호.</div>
+  </div>
+  <div class="score">
+    <div class="top"><span class="n">Performance</span><span class="s" style="color:var(--p2)">45</span></div>
+    <div class="bar"><i style="width:45%;background:linear-gradient(90deg,#ffd93d,#ff9f43)"></i></div>
+    <div class="c">전체 버퍼링 + Base64(+33%) + JSON 직렬화로 30초 상한·스트리밍 불가. 리다이렉트 왕복 1회 추가, no-cache 강제. 소규모 페이지에서는 실용적.</div>
+  </div>
+  <div class="score">
+    <div class="top"><span class="n">Security</span><span class="s" style="color:var(--p0)">28</span></div>
+    <div class="bar"><i style="width:28%;background:linear-gradient(90deg,#ff5c5c,#c0392b)"></i></div>
+    <div class="c">인증·인가 전무, 오리진 공유로 터널 간 격리 실패, 보안 헤더 제거, 무인증 로그 엔드포인트, 쿠키 평문 로깅, 터널 URL 제3자 전송. 로그 XSS 방어만 양호.</div>
+  </div>
+  <div class="score">
+    <div class="top"><span class="n">Maintainability</span><span class="s" style="color:var(--p2)">45</span></div>
+    <div class="bar"><i style="width:45%;background:linear-gradient(90deg,#ffd93d,#ff9f43)"></i></div>
+    <div class="c">TS strict·타입 정의·문서화는 양호하나 테스트 0개·CI 없음·200줄 함수·죽은 코드·의존성 중복·문서 불일치가 누적.</div>
+  </div>
+  <div class="score" style="border-color:var(--acc)">
+    <div class="top"><span class="n"><b>Overall</b></span><span class="s" style="color:var(--p1)">42</span></div>
+    <div class="bar"><i style="width:42%;background:linear-gradient(90deg,#ff9f43,#ffd93d)"></i></div>
+    <div class="c"><b>개인 실험용으로는 인상적, 공개 배포용으로는 미성숙.</b> Phase 1~2만 완료해도 60점대, Phase 3까지면 75점대 도달이 현실적입니다.</div>
+  </div>
+</div>
+
+<div class="note" style="margin-top:26px">
+  <b>점수 기준 —</b> 100점은 "프로덕션 SaaS로 운영 가능", 70점은 "팀 내부 도구로 신뢰 가능", 50점은 "개인 사용 가능",
+  30점 이하는 "구조적 결함으로 사용 시 위험". 각 항목은 본문에서 실제 코드로 근거를 제시한 문제만 반영했으며,
+  추정에 근거한 감점은 하지 않았습니다.
+</div>
+
+<footer>
+  <p><b>분석 방법 —</b> 저장소 내 모든 소스 파일(TypeScript 4개, Webview 3개, 터널 server/client 2개, 빌드 스크립트)을 전량 읽고,
+  배포 산출물 <code>custom-tunnel-{2.0.0,2.1.0}.vsix</code>의 내부 구성을 <code>unzip -l</code>로 직접 대조 검증했습니다.
+  모든 지적 사항에는 파일과 라인 번호를 명시했으며, 실행 시나리오를 재현하지 않고 코드 정적 분석만으로 판단한 항목은
+  본문에 그 성격을 명시했습니다. 확인되지 않은 추정은 보고서에 포함하지 않았습니다.</p>
+  <p>생성일 2026-09-05 · 대상 커밋 <code>0113c92</code> (main) · 본 분석 과정에서 소스 코드는 변경되지 않았습니다.</p>
+</footer>
+
+</div>
+</body>
+</html>
