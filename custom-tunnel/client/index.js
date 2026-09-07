@@ -20,16 +20,31 @@ console.log(
 console.log(`🌐 터널 서버: ${tunnelServerUrl}`);
 console.log(`📡 로그 서버: ${tunnelServerHttpUrl}`);
 
+// 터널 에이전트 전용 경로. 서버가 브라우저 WS와 구분하는 데 쓴다.
+// 헤더도 같이 보내는 이유: 중간 프록시가 경로를 건드려도 구분이 유지된다.
+const AGENT_PATH = "/__tunnel_agent";
+
 // 터널 서버에 연결
-const ws = new WebSocket(tunnelServerUrl);
+const ws = new WebSocket(tunnelServerUrl.replace(/\/+$/, "") + AGENT_PATH, {
+  headers: { "x-tunnel-agent": "1" },
+});
 
 // 서버(Render)와 이 클라이언트(VSIX 안)는 따로 배포되므로 버전이 어긋날 수 있다.
 // server/index.js 의 PROTOCOL_VERSION 과 반드시 같아야 한다.
-const PROTOCOL_VERSION = 2;
+const PROTOCOL_VERSION = 3;
+
+// 바이너리 프레임 형식: [1바이트 종류][4바이트 BE id][페이로드]
+const FRAME_HTTP_BODY = 0;
+const FRAME_WS_TEXT = 1;
+const FRAME_WS_BINARY = 2;
+const FRAME_HEADER_SIZE = 5;
 
 // 진행 중인 요청 (requestId -> { controller, flow })
 // 서버의 abort/pause/resume 제어 메시지를 받아 처리하기 위해 유지한다.
 const inflight = new Map();
+
+// 릴레이 중인 로컬 WebSocket (connId -> WebSocket)
+const localSockets = new Map();
 
 // WS 송신 버퍼가 이만큼 쌓이면 로컬 스트림을 멈춘다.
 // 없으면 큰 파일을 받을 때 메모리가 그대로 폭증한다.
@@ -46,15 +61,28 @@ function sendJson(payload) {
   }
 }
 
-// 응답 본문 청크는 바이너리 프레임으로 보낸다: [4바이트 BE requestId][페이로드]
+// 본문/메시지는 바이너리 프레임으로 보낸다: [1바이트 종류][4바이트 BE id][페이로드]
 // Base64로 감싸면 33% 커지고, 텍스트/바이너리 분기 로직이 필요해진다.
-function sendChunk(requestId, chunk) {
+function sendFrame(kind, id, payload) {
   if (ws.readyState !== WebSocket.OPEN) {
     return;
   }
-  const header = Buffer.allocUnsafe(4);
-  header.writeUInt32BE(requestId, 0);
-  ws.send(Buffer.concat([header, chunk]), { binary: true });
+  const header = Buffer.allocUnsafe(FRAME_HEADER_SIZE);
+  header.writeUInt8(kind, 0);
+  header.writeUInt32BE(id, 1);
+  ws.send(Buffer.concat([header, payload]), { binary: true });
+}
+
+function sendChunk(requestId, chunk) {
+  sendFrame(FRAME_HTTP_BODY, requestId, chunk);
+}
+
+// 1005/1006은 close 프레임에 실을 수 없는 코드다. 그대로 넘기면 close()가 던진다.
+function normalizeCloseCode(code) {
+  if (!code || code === 1005 || code === 1006) {
+    return 1000;
+  }
+  return code;
 }
 
 // 취소(abort)와 실제 오류를 구분한다. axios는 취소 시점에 따라
@@ -116,8 +144,25 @@ ws.on("open", () => {
   sendJson({ type: "hello", protocol: PROTOCOL_VERSION });
 });
 
-ws.on("message", async (message) => {
+ws.on("message", async (message, isBinary) => {
   try {
+    // 브라우저가 보낸 WS 메시지는 바이너리 프레임으로 온다
+    if (isBinary) {
+      if (message.length < FRAME_HEADER_SIZE) {
+        return;
+      }
+      const kind = message.readUInt8(0);
+      const connId = message.readUInt32BE(1);
+      const payload = message.subarray(FRAME_HEADER_SIZE);
+
+      const local = localSockets.get(connId);
+      if (!local || local.readyState !== WebSocket.OPEN) {
+        return;
+      }
+      local.send(payload, { binary: kind === FRAME_WS_BINARY });
+      return;
+    }
+
     const data = JSON.parse(message);
 
     if (data.type === "connected") {
@@ -160,6 +205,15 @@ ws.on("message", async (message) => {
       inflight.get(data.requestId)?.flow?.pause("peer");
     } else if (data.type === "resume") {
       inflight.get(data.requestId)?.flow?.resume("peer");
+    } else if (data.type === "ws_open") {
+      openLocalWs(data);
+    } else if (data.type === "ws_close") {
+      // 브라우저가 끊었다. 로컬 서버 쪽도 같이 닫는다.
+      const local = localSockets.get(data.connId);
+      if (local) {
+        localSockets.delete(data.connId);
+        local.close(normalizeCloseCode(data.code), data.reason || "");
+      }
     } else if (data.type === "request") {
       await handleRequest(data);
     }
@@ -167,6 +221,82 @@ ws.on("message", async (message) => {
     console.error("❌ 메시지 처리 오류:", error);
   }
 });
+
+// 서버가 브라우저 업그레이드를 받아 넘겨준 요청. 로컬 서버로 WS를 연다.
+// 로컬이 열린 뒤에야 ws_open_ok을 보낸다 — 순서를 뒤집으면 브라우저는
+// "연결됨" 상태인데 아무것도 오지 않는 상태가 된다.
+function openLocalWs(data) {
+  const { connId, url, headers, protocols } = data;
+  const scheme = useHttps ? "wss" : "ws";
+  const target = `${scheme}://localhost:${localPort}${url}`;
+
+  console.log(`🔌 WS 연결 요청: ${url}`);
+
+  const forwardHeaders = { ...headers };
+  delete forwardHeaders["x-tunnel-agent"];
+
+  let local;
+  try {
+    local = new WebSocket(
+      target,
+      protocols && protocols.length ? protocols : undefined,
+      {
+        headers: forwardHeaders,
+        rejectUnauthorized: false, // 자체 서명 인증서 허용
+        handshakeTimeout: TTFB_TIMEOUT_MS,
+      },
+    );
+  } catch (error) {
+    sendJson({ type: "ws_open_fail", connId, message: error.message });
+    return;
+  }
+
+  localSockets.set(connId, local);
+  let opened = false;
+
+  local.on("open", () => {
+    opened = true;
+    // 로컬 서버가 고른 서브프로토콜을 그대로 브라우저에 돌려줘야 한다
+    sendJson({ type: "ws_open_ok", connId, protocol: local.protocol || "" });
+    console.log(`✅ WS 연결됨: ${url}`);
+  });
+
+  local.on("message", (payload, isBinary) => {
+    sendFrame(
+      isBinary ? FRAME_WS_BINARY : FRAME_WS_TEXT,
+      connId,
+      Buffer.isBuffer(payload) ? payload : Buffer.from(payload),
+    );
+  });
+
+  local.on("close", (code, reason) => {
+    localSockets.delete(connId);
+    sendJson({
+      type: "ws_close",
+      connId,
+      code: normalizeCloseCode(code),
+      reason: reason?.toString() || "",
+    });
+    console.log(`🔌 WS 종료: ${url}`);
+  });
+
+  local.on("error", (error) => {
+    localSockets.delete(connId);
+    console.error(`❌ 로컬 WS 오류: ${url} — ${error.message}`);
+    // 열리기 전에 실패했으면 서버가 아직 브라우저에 101을 안 보냈다.
+    // 이때는 502로 끊게 해야 브라우저가 원인을 알 수 있다.
+    if (!opened) {
+      sendJson({ type: "ws_open_fail", connId, message: error.message });
+    } else {
+      sendJson({
+        type: "ws_close",
+        connId,
+        code: 1011,
+        reason: error.message,
+      });
+    }
+  });
+}
 
 async function handleRequest(data) {
   const { requestId, method, url, headers, bodyBase64 } = data;

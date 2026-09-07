@@ -70,6 +70,12 @@ function cleanup() {
 
   const code = await new Promise((resolve) => check.on("exit", resolve));
 
+  console.log("=".repeat(50));
+  const wsCheck = spawn("node", [path.join(__dirname, "ws.js"), tunnelId, "8099"], {
+    stdio: "inherit",
+  });
+  const wsCode = await new Promise((resolve) => wsCheck.on("exit", resolve));
+
   let extraFailed = 0;
   const assert = (name, pass, detail) => {
     if (!pass) extraFailed++;
@@ -83,9 +89,30 @@ function cleanup() {
   );
   assert("끊김 처리: 클라이언트가 요청 중단", /🚫 요청 중단됨/.test(client.buf));
 
-  // H 검증: 터널이 죽으면 대기 없이 즉시 503
+  // H 검증: 터널이 죽으면 릴레이 중인 브라우저 WS도 끊기고, 대기 없이 즉시 503
+  const WebSocketClient = require(path.join(DIR, "client/node_modules/ws"));
+  const orphan = new WebSocketClient(`ws://localhost:8099/${tunnelId}/echo`);
+  const orphanClosed = new Promise((resolve) => {
+    orphan.once("close", (c) => resolve(c));
+    orphan.once("error", () => resolve(-1));
+  });
+  await new Promise((resolve, reject) => {
+    orphan.once("open", resolve);
+    orphan.once("error", reject);
+  });
+
   client.kill("SIGKILL");
   await waitFor(server, /터널 종료/, "터널 종료 감지", 10000);
+
+  const orphanCode = await Promise.race([
+    orphanClosed,
+    new Promise((r) => setTimeout(() => r("타임아웃"), 5000)),
+  ]);
+  assert(
+    "터널 사망 시 릴레이 중인 브라우저 WS도 종료",
+    orphanCode === 1001,
+    `code=${orphanCode}`,
+  );
 
   const started = Date.now();
   const status = await new Promise((resolve) => {
@@ -117,7 +144,7 @@ function cleanup() {
   console.log("--- 클라이언트 로그 (마지막 8줄) ---");
   console.log(client.buf.trim().split("\n").slice(-8).join("\n"));
   cleanup();
-  process.exit(code || extraFailed ? 1 : 0);
+  process.exit(code || wsCode || extraFailed ? 1 : 0);
 })().catch((e) => {
   console.error("오케스트레이션 실패:", e.message);
   cleanup();

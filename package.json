@@ -2,7 +2,7 @@
   "name": "custom-tunnel",
   "displayName": "Custom Tunnel",
   "description": "로컬 개발 서버를 공개 URL로 공유하고, 실시간 콘솔 모니터링과 QR 코드 생성으로 쉽게 테스트하세요",
-  "version": "2.1.0",
+  "version": "2.1.2",
   "publisher": "dbckdgjs369",
   "repository": {
     "type": "git",
@@ -13,6 +13,7 @@
     "url": "https://github.com/dbckdgjs369/debug_tool/issues"
   },
   "license": "MIT",
+  "icon": "images/icon.png",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -91,6 +92,7 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "node ./out/test/runTest.js",
+    "test:tunnel": "node custom-tunnel/test/run.js && node custom-tunnel/test/protocol.js",
     "package": "npm run compile && yes | npx @vscode/vsce package --allow-missing-repository",
     "package:dev": "TUNNEL_ENV=development npm run compile && yes | npx @vscode/vsce package --allow-missing-repository --out custom-tunnel-dev.vsix"
   },

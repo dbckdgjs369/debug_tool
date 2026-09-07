@@ -1,6 +1,17 @@
 // 터널 검증용 가짜 dev 서버
 const http = require("http");
 const crypto = require("crypto");
+const WebSocket = require("../client/node_modules/ws");
+
+// WS 릴레이 검증용 관측값. /wsstat 으로 읽는다.
+const wsStat = {
+  opened: 0,
+  closed: 0,
+  lastCloseCode: null,
+  lastHeaders: {},
+  lastProtocol: null,
+  lastUrl: null,
+};
 
 // 결정적 바이너리 (PNG 시그니처 + 랜덤 아닌 패턴)
 const IMG = Buffer.alloc(64 * 1024);
@@ -77,8 +88,59 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (url === "/wsstat") {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify(wsStat));
+    return;
+  }
+
   res.writeHead(404, { "content-type": "text/plain" });
   res.end("nope");
+});
+
+// --- WebSocket 에코 엔드포인트 ---
+// 실제 dev 서버처럼 같은 포트에서 /echo 만 업그레이드를 받는다.
+const appWss = new WebSocket.Server({
+  noServer: true,
+  // Vite HMR처럼 서브프로토콜을 골라서 돌려준다
+  handleProtocols: (protocols) =>
+    protocols.has("vite-hmr") ? "vite-hmr" : false,
+});
+
+server.on("upgrade", (req, socket, head) => {
+  const path = req.url.split("?")[0];
+  if (path !== "/echo") {
+    socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
+    socket.destroy();
+    return;
+  }
+  appWss.handleUpgrade(req, socket, head, (client) => {
+    wsStat.opened++;
+    wsStat.lastHeaders = req.headers;
+    wsStat.lastProtocol = client.protocol || "";
+    wsStat.lastUrl = req.url;
+
+    client.send("welcome");
+
+    client.on("message", (payload, isBinary) => {
+      if (isBinary) {
+        client.send(payload, { binary: true });
+        return;
+      }
+      const text = payload.toString();
+      if (text === "__close__") {
+        // 로컬이 먼저 끊는 경우를 만들기 위한 트리거
+        client.close(4321, "app initiated");
+        return;
+      }
+      client.send("echo:" + text);
+    });
+
+    client.on("close", (code) => {
+      wsStat.closed++;
+      wsStat.lastCloseCode = code;
+    });
+  });
 });
 
 server.listen(4321, () => {

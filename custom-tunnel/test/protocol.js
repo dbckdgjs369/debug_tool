@@ -115,6 +115,58 @@ function cleanup() {
   );
   legacy.close();
 
+  // ── 방향 3: 업그레이드 라우팅 ──────────────────────────────────
+  // 구버전 허용을 끄면 정체불명 업그레이드는 터널을 발급받지 못해야 한다.
+  // (예전에는 아무 경로로나 WS를 열면 터널 ID가 발급됐다)
+  const strict = run("node", [path.join(DIR, "server/index.js")], {
+    env: { ...process.env, PORT: "8096", ALLOW_LEGACY_AGENT: "false" },
+  });
+  await waitFor(strict, /WebSocket 서버 준비 완료/, "엄격 모드 서버 시작");
+
+  const anonymous = await new Promise((resolve) => {
+    const w = new WebSocket("ws://localhost:8096/some/app/path");
+    const timer = setTimeout(() => resolve("타임아웃"), 8000);
+    w.on("unexpected-response", (_req, res) => {
+      clearTimeout(timer);
+      res.resume();
+      resolve(res.statusCode);
+    });
+    w.on("open", () => {
+      clearTimeout(timer);
+      resolve("열림(터널 발급됨)");
+    });
+    w.on("error", () => {});
+  });
+  check(
+    "정체불명 업그레이드는 터널을 발급받지 못함",
+    anonymous === 404,
+    `결과=${anonymous}`,
+  );
+
+  const agentOk = await new Promise((resolve) => {
+    const w = new WebSocket("ws://localhost:8096/__tunnel_agent", {
+      headers: { "x-tunnel-agent": "1" },
+    });
+    const timer = setTimeout(() => resolve("타임아웃"), 8000);
+    w.on("message", (m) => {
+      const data = JSON.parse(m.toString());
+      if (data.type === "connected") {
+        clearTimeout(timer);
+        w.close();
+        resolve(data.protocol);
+      }
+    });
+    w.on("error", (e) => {
+      clearTimeout(timer);
+      resolve(e.message);
+    });
+  });
+  check(
+    "전용 경로의 에이전트는 정상 발급 (엄격 모드에서도)",
+    agentOk === 3,
+    `protocol=${agentOk}`,
+  );
+
   const failed = results.filter((r) => !r).length;
   console.log(`\n${results.length - failed}/${results.length} 통과`);
   cleanup();

@@ -44,12 +44,30 @@ if (USE_HTTPS) {
   server = http.createServer(app);
 }
 
-const wss = new WebSocket.Server({ server });
+// 터널 에이전트(VSIX 안의 client)와 브라우저가 여는 앱 WebSocket이 같은 포트로
+// 들어온다. 예전에는 `new WebSocket.Server({ server })`가 경로를 가리지 않고 모든
+// 업그레이드를 삼켜서, 브라우저 앱이 WS를 열면 터널이 하나 새로 발급되고 끝났다
+// (Vite HMR이 조용히 실패하는 원인). 이제 업그레이드를 직접 받아 둘로 나눈다.
+const wss = new WebSocket.Server({ noServer: true });
+const browserWss = new WebSocket.Server({
+  noServer: true,
+  // 로컬 서버가 고른 서브프로토콜을 그대로 브라우저에 돌려준다.
+  // (Vite HMR은 "vite-hmr" 서브프로토콜을 쓴다)
+  handleProtocols: (_protocols, req) => req.negotiatedProtocol || false,
+});
+
+// 터널 에이전트 전용 경로. 브라우저 앱이 이 경로로 WS를 열 일은 없다.
+const AGENT_PATH = "/__tunnel_agent";
+// 경로 없이 붙는 구버전 에이전트(2.1.1 이하)를 계속 받아줄지.
+// 받아주더라도 hello 단계의 프로토콜 검사에서 이유를 알려주고 끊긴다.
+const ALLOW_LEGACY_AGENT = process.env.ALLOW_LEGACY_AGENT !== "false";
 
 // 연결된 터널 클라이언트들을 저장
 const tunnels = new Map();
 // 대기 중인 HTTP 요청들 (응답을 기다리는 중)
 const pendingRequests = new Map();
+// 릴레이 중인 브라우저 WebSocket들 (connId -> conn)
+const wsConnections = new Map();
 
 // 요청 ID는 바이너리 프레임 헤더(4바이트)에 실리므로 uint32 정수를 쓴다.
 let nextRequestId = 1;
@@ -66,7 +84,42 @@ function allocRequestId() {
 // 프로토콜을 바꿀 때마다 이 숫자를 올린다.
 //   1: response 단일 프레임 (Base64)
 //   2: response_head + 바이너리 청크 + response_end (스트리밍)
-const PROTOCOL_VERSION = 2;
+//   3: 바이너리 프레임에 종류 바이트 추가 + WebSocket 릴레이
+const PROTOCOL_VERSION = 3;
+
+// 바이너리 프레임 형식: [1바이트 종류][4바이트 BE id][페이로드]
+// HTTP 응답 본문과 WS 메시지가 같은 채널을 공유하므로 종류가 필요하다.
+// id는 allocRequestId() 하나에서 뽑으므로 requestId와 connId는 겹치지 않는다.
+const FRAME_HTTP_BODY = 0;
+const FRAME_WS_TEXT = 1;
+const FRAME_WS_BINARY = 2;
+const FRAME_HEADER_SIZE = 5;
+
+function encodeFrame(kind, id, payload) {
+  const header = Buffer.allocUnsafe(FRAME_HEADER_SIZE);
+  header.writeUInt8(kind, 0);
+  header.writeUInt32BE(id, 1);
+  return Buffer.concat([header, payload]);
+}
+
+function sendFrame(target, kind, id, payload) {
+  if (target && target.readyState === WebSocket.OPEN) {
+    try {
+      target.send(encodeFrame(kind, id, payload), { binary: true });
+    } catch {
+      // 연결이 이미 끊긴 경우는 무시 (close 핸들러가 정리한다)
+    }
+  }
+}
+
+// 1005(상태 없음)/1006(비정상 종료)은 실제 close 프레임에 실을 수 없는 코드다.
+// 그대로 넘기면 상대편 ws.close()가 예외를 던진다.
+function normalizeCloseCode(code) {
+  if (!code || code === 1005 || code === 1006) {
+    return 1000;
+  }
+  return code;
+}
 // 클라이언트가 hello를 보낼 때까지 기다리는 시간
 const HELLO_GRACE_MS = 5000;
 
@@ -183,23 +236,52 @@ wss.on("connection", (ws, req) => {
   // 이 터널을 기다리는 요청들. 연결이 끊기면 전부 실패 처리해야 한다.
   const ownRequests = new Set();
   ws.ownRequests = ownRequests;
+  // 이 터널을 통해 릴레이 중인 브라우저 WebSocket들
+  const ownWsConns = new Set();
+  ws.ownWsConns = ownWsConns;
 
   // 클라이언트로부터 응답 받기
   // - 텍스트 프레임: 제어 메시지(JSON)
-  // - 바이너리 프레임: 응답 본문 청크 [4바이트 BE requestId][페이로드]
+  // - 바이너리 프레임: [1바이트 종류][4바이트 BE id][페이로드]
   ws.on("message", (message, isBinary) => {
     if (isBinary) {
-      if (message.length < 4) {
+      if (message.length < FRAME_HEADER_SIZE) {
         return;
       }
-      const requestId = message.readUInt32BE(0);
+      const kind = message.readUInt8(0);
+      const id = message.readUInt32BE(1);
+      const payload = message.subarray(FRAME_HEADER_SIZE);
+
+      if (kind === FRAME_WS_TEXT || kind === FRAME_WS_BINARY) {
+        const conn = wsConnections.get(id);
+        if (!conn) {
+          return;
+        }
+        // ws_open_ok 직후 핸드셰이크가 끝나기 전에 로컬 메시지가 먼저 올 수 있다
+        if (!conn.browser) {
+          conn.pending.push([kind, payload]);
+          return;
+        }
+        try {
+          conn.browser.send(payload, { binary: kind === FRAME_WS_BINARY });
+        } catch {
+          // 브라우저가 이미 끊긴 경우는 close 핸들러가 정리한다
+        }
+        return;
+      }
+
+      if (kind !== FRAME_HTTP_BODY) {
+        return;
+      }
+
+      const requestId = id;
       const pending = pendingRequests.get(requestId);
       // head가 아직 안 왔으면 쓸 수 없다 (순서가 깨진 경우 방어)
       if (!pending || !pending.headSent) {
         return;
       }
 
-      const flushed = pending.res.write(message.subarray(4));
+      const flushed = pending.res.write(payload);
       if (!flushed && !pending.paused) {
         // 브라우저가 받아가지 못하는 중 → 로컬 스트림을 멈춰 메모리 폭증을 막는다
         pending.paused = true;
@@ -228,6 +310,30 @@ wss.on("connection", (ws, req) => {
           );
         } else {
           console.log(`🤝 프로토콜 v${data.protocol} 확인: ${tunnelId}`);
+        }
+        return;
+      }
+
+      // --- WebSocket 릴레이 제어 ---
+      if (data.type === "ws_open_ok") {
+        completeRelay(data.connId, data.protocol);
+        return;
+      }
+      if (data.type === "ws_open_fail") {
+        console.warn(`⚠️  로컬 WS 연결 실패: ${data.connId} — ${data.message}`);
+        failRelay(data.connId, data.message || "local websocket failed");
+        return;
+      }
+      if (data.type === "ws_close") {
+        const conn = wsConnections.get(data.connId);
+        if (conn) {
+          // 로컬 서버가 끊었다. 브라우저에도 같은 코드로 전달한다.
+          if (conn.browser) {
+            conn.browser.close(normalizeCloseCode(data.code), data.reason || "");
+          } else {
+            rejectUpgrade(conn.socket, 502, data.reason || "Bad Gateway");
+          }
+          dropRelay(data.connId);
         }
         return;
       }
@@ -298,11 +404,291 @@ wss.on("connection", (ws, req) => {
       pendingRequests.delete(requestId);
     }
     ownRequests.clear();
+
+    // 릴레이 중인 브라우저 WebSocket도 같이 끊는다.
+    // 남겨두면 폰의 앱은 "연결됨" 상태로 영원히 아무것도 받지 못한다.
+    for (const connId of [...ownWsConns]) {
+      const conn = wsConnections.get(connId);
+      if (!conn) {
+        continue;
+      }
+      if (conn.browser) {
+        conn.browser.close(1001, "tunnel closed");
+      } else {
+        rejectUpgrade(conn.socket, 503, "Tunnel closed");
+      }
+      dropRelay(connId);
+    }
+    ownWsConns.clear();
   });
 
   ws.on("error", (error) => {
     console.error(`❌ WebSocket 오류 (${tunnelId}):`, error);
   });
+});
+
+// ---------------------------------------------------------------------------
+// WebSocket 업그레이드 분기
+// ---------------------------------------------------------------------------
+
+// 업그레이드 요청에는 express가 붙지 않으므로 쿠키를 직접 파싱한다.
+function parseCookies(header) {
+  const out = {};
+  if (!header) {
+    return out;
+  }
+  for (const part of header.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq < 0) {
+      continue;
+    }
+    const key = part.slice(0, eq).trim();
+    try {
+      out[key] = decodeURIComponent(part.slice(eq + 1).trim());
+    } catch {
+      out[key] = part.slice(eq + 1).trim();
+    }
+  }
+  return out;
+}
+
+// 브라우저 WS 업그레이드가 어느 터널로 가야 하는지 찾는다.
+// 브라우저는 WS 핸드셰이크에도 같은 출처의 쿠키를 보내므로 쿠키로 찾을 수 있다.
+// HTTP처럼 리다이렉트로 터널 ID를 떼어낼 수 없어서 경로도 직접 처리한다.
+function resolveUpgradeTarget(req) {
+  const qIndex = req.url.indexOf("?");
+  const pathname = qIndex >= 0 ? req.url.slice(0, qIndex) : req.url;
+  const query = qIndex >= 0 ? req.url.slice(qIndex) : "";
+
+  const pathMatch = pathname.match(/^\/([a-f0-9]{8})(\/.*)?$/);
+  if (pathMatch) {
+    return { tunnelId: pathMatch[1], url: (pathMatch[2] || "/") + query };
+  }
+
+  const cookies = parseCookies(req.headers.cookie);
+  if (cookies.tunnelId) {
+    return { tunnelId: cookies.tunnelId, url: req.url };
+  }
+
+  return null;
+}
+
+// 업그레이드는 아직 HTTP 응답을 보낼 수 있는 상태다. 이유를 적어서 끊는다.
+function rejectUpgrade(socket, statusCode, message) {
+  if (socket && socket.writable) {
+    const body = message || http.STATUS_CODES[statusCode] || "";
+    socket.write(
+      `HTTP/1.1 ${statusCode} ${http.STATUS_CODES[statusCode] || "Error"}\r\n` +
+        "Connection: close\r\n" +
+        "Content-Type: text/plain; charset=utf-8\r\n" +
+        `Content-Length: ${Buffer.byteLength(body)}\r\n` +
+        `\r\n${body}`,
+    );
+  }
+  socket?.destroy();
+}
+
+function dropRelay(connId) {
+  const conn = wsConnections.get(connId);
+  if (!conn) {
+    return;
+  }
+  clearTimeout(conn.openTimeout);
+  conn.closed = true;
+  wsConnections.delete(connId);
+  conn.agent.ownWsConns?.delete(connId);
+}
+
+// 로컬 WS를 열지 못했다. 아직 핸드셰이크 전이므로 HTTP 502로 끊는다.
+function failRelay(connId, message) {
+  const conn = wsConnections.get(connId);
+  if (!conn) {
+    return;
+  }
+  if (conn.browser) {
+    conn.browser.close(1011, "local websocket failed");
+  } else {
+    rejectUpgrade(conn.socket, 502, `Bad Gateway: ${message}`);
+  }
+  dropRelay(connId);
+}
+
+// 로컬 WS가 열렸다. 이제서야 브라우저에게 101을 보낸다.
+// 순서를 뒤집으면 "연결은 됐는데 아무것도 안 오는" 상태가 만들어진다.
+function completeRelay(connId, negotiatedProtocol) {
+  const conn = wsConnections.get(connId);
+  if (!conn || conn.browser) {
+    return;
+  }
+  clearTimeout(conn.openTimeout);
+
+  // 브라우저가 기다리다 떠났을 수 있다
+  if (!conn.socket.writable) {
+    sendControl(conn.agent, {
+      type: "ws_close",
+      connId,
+      code: 1001,
+      reason: "browser gone",
+    });
+    dropRelay(connId);
+    return;
+  }
+
+  conn.socket.removeListener("close", conn.onEarlyClose);
+  conn.socket.removeListener("error", conn.onEarlyClose);
+  // handleProtocols가 읽어서 Sec-WebSocket-Protocol 응답 헤더에 넣는다
+  conn.req.negotiatedProtocol = negotiatedProtocol || false;
+
+  browserWss.handleUpgrade(conn.req, conn.socket, conn.head, (browser) => {
+    conn.browser = browser;
+    console.log(`🔗 WS 릴레이 시작: ${connId} ${conn.url}`);
+
+    // 핸드셰이크가 끝나기 전에 도착한 로컬 메시지를 먼저 흘려보낸다
+    for (const [kind, payload] of conn.pending) {
+      browser.send(payload, { binary: kind === FRAME_WS_BINARY });
+    }
+    conn.pending.length = 0;
+
+    browser.on("message", (payload, isBinary) => {
+      sendFrame(
+        conn.agent,
+        isBinary ? FRAME_WS_BINARY : FRAME_WS_TEXT,
+        connId,
+        payload,
+      );
+    });
+
+    browser.on("close", (code, reason) => {
+      sendControl(conn.agent, {
+        type: "ws_close",
+        connId,
+        code: normalizeCloseCode(code),
+        reason: reason?.toString() || "",
+      });
+      dropRelay(connId);
+      console.log(`🔌 WS 릴레이 종료: ${connId}`);
+    });
+
+    browser.on("error", (error) => {
+      console.error(`❌ 브라우저 WS 오류 (${connId}):`, error.message);
+      sendControl(conn.agent, {
+        type: "ws_close",
+        connId,
+        code: 1011,
+        reason: "browser error",
+      });
+      dropRelay(connId);
+    });
+  });
+}
+
+function relayBrowserUpgrade(req, socket, head, target) {
+  const agent = tunnels.get(target.tunnelId);
+
+  if (!agent || agent.readyState !== WebSocket.OPEN) {
+    console.warn(`⚠️  WS 업그레이드: 터널 없음 (${target.tunnelId})`);
+    return rejectUpgrade(socket, 503, "Tunnel not available");
+  }
+
+  const connId = allocRequestId();
+  const conn = {
+    connId,
+    agent,
+    req,
+    socket,
+    head,
+    url: target.url,
+    browser: null,
+    pending: [],
+    closed: false,
+    openTimeout: null,
+    onEarlyClose: null,
+  };
+
+  // 로컬 WS가 열리기 전에 브라우저가 떠날 수 있다
+  conn.onEarlyClose = () => {
+    sendControl(agent, {
+      type: "ws_close",
+      connId,
+      code: 1001,
+      reason: "browser gone",
+    });
+    dropRelay(connId);
+  };
+  socket.once("close", conn.onEarlyClose);
+  socket.once("error", conn.onEarlyClose);
+
+  wsConnections.set(connId, conn);
+  agent.ownWsConns.add(connId);
+
+  // 홉 단위 헤더는 로컬 ws 클라이언트가 직접 만든다. 넘기면 핸드셰이크가 깨진다.
+  const forwardHeaders = { ...req.headers };
+  for (const key of [
+    "connection",
+    "upgrade",
+    "host",
+    "sec-websocket-key",
+    "sec-websocket-version",
+    "sec-websocket-extensions",
+    "sec-websocket-accept",
+    "sec-websocket-protocol",
+  ]) {
+    delete forwardHeaders[key];
+  }
+
+  const protocols = (req.headers["sec-websocket-protocol"] || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  console.log(`📥 WS 업그레이드: ${target.tunnelId} → ${target.url}`);
+
+  sendControl(agent, {
+    type: "ws_open",
+    connId,
+    url: target.url,
+    headers: forwardHeaders,
+    protocols,
+  });
+
+  conn.openTimeout = setTimeout(() => {
+    if (!conn.closed && !conn.browser) {
+      console.log(`⏰ 로컬 WS 연결 타임아웃: ${connId}`);
+      failRelay(connId, "local websocket open timeout");
+    }
+  }, TTFB_TIMEOUT_MS);
+}
+
+server.on("upgrade", (req, socket, head) => {
+  const pathname = req.url.split("?")[0];
+
+  // 1. 터널 에이전트 — 전용 경로 또는 전용 헤더.
+  //    브라우저는 WS 핸드셰이크에 임의 헤더를 넣을 수 없으므로 위조되지 않는다.
+  if (pathname === AGENT_PATH || req.headers["x-tunnel-agent"] === "1") {
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit("connection", ws, req);
+    });
+    return;
+  }
+
+  // 2. 브라우저 앱의 WS — 터널을 특정할 수 있으면 로컬 서버로 릴레이한다
+  const target = resolveUpgradeTarget(req);
+  if (target) {
+    relayBrowserUpgrade(req, socket, head, target);
+    return;
+  }
+
+  // 3. 경로도 헤더도 쿠키도 없다 → 구버전 에이전트(2.1.1 이하)일 가능성.
+  //    받아주면 hello 검사에서 "프로토콜 불일치"로 이유를 알려주고 끊긴다.
+  if (ALLOW_LEGACY_AGENT) {
+    console.warn(`⚠️  경로 없는 업그레이드 (${pathname}) — 구버전 에이전트로 처리`);
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit("connection", ws, req);
+    });
+    return;
+  }
+
+  rejectUpgrade(socket, 404, "Tunnel ID not found");
 });
 
 // HTTP 요청 처리 (터널 프록시 - /log는 위에서 이미 처리됨)
@@ -313,6 +699,7 @@ app.all("*", (req, res) => {
       <h1>🚇 Custom Tunnel Server</h1>
       <p>활성 터널: ${tunnels.size}개</p>
       <p>대기 중인 요청: ${pendingRequests.size}개</p>
+      <p>릴레이 중인 WebSocket: ${wsConnections.size}개</p>
       <hr>
       <h2>사용 방법:</h2>
       <ol>

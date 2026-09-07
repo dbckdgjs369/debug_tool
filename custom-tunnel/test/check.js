@@ -1,19 +1,29 @@
 const http = require("http");
+const https = require("https");
 const crypto = require("crypto");
 
 const TUNNEL_ID = process.argv[2];
 const IMG_SHA = process.argv[3];
-const PORT = 8099;
+
+// 기본은 로컬 터널 서버. 원격(Render) 검증 시 환경변수로 바꾼다.
+const HOST = process.env.TARGET_HOST || "localhost";
+const PORT = Number(process.env.TARGET_PORT || 8099);
+const SECURE = process.env.TARGET_PROTO === "https";
+const transport = SECURE ? https : http;
 
 function req(path, opts = {}) {
   return new Promise((resolve, reject) => {
-    const r = http.request(
+    const r = transport.request(
       {
-        host: "localhost",
+        host: HOST,
         port: PORT,
         path,
         method: opts.method || "GET",
-        headers: { Cookie: `tunnelId=${TUNNEL_ID}`, ...(opts.headers || {}) },
+        headers: {
+          Host: HOST,
+          Cookie: `tunnelId=${TUNNEL_ID}`,
+          ...(opts.headers || {}),
+        },
       },
       (res) => {
         const chunks = [];
@@ -88,11 +98,20 @@ function check(name, pass, detail) {
     c.body.toString().includes("tick-5"),
     `status=${c.status}`,
   );
-  check(
-    "x-accel-buffering 헤더",
-    c.headers["x-accel-buffering"] === "no",
-    c.headers["x-accel-buffering"],
-  );
+  // 중간 프록시에 "모아두지 말라"고 주는 힌트 헤더.
+  // Render는 이 헤더를 응답에서 제거하지만(2026-09 확인) 스트리밍 자체는 정상이라,
+  // 원격 검증에서는 단정하지 않고 위의 도착 간격 측정으로 판단한다.
+  if (SECURE) {
+    console.log(
+      `INFO  x-accel-buffering = ${c.headers["x-accel-buffering"] ?? "(제거됨)"} — 원격에서는 판정 제외`,
+    );
+  } else {
+    check(
+      "x-accel-buffering 헤더",
+      c.headers["x-accel-buffering"] === "no",
+      c.headers["x-accel-buffering"],
+    );
+  }
 
   // D. 업로드 바이트 무손상 (기존 `body += chunk.toString()` 버그)
   const upload = crypto.randomBytes(1024 * 1024);
@@ -130,12 +149,12 @@ function check(name, pass, detail) {
   // G. SSE를 중간에 끊었을 때 로컬 스트림이 정리되는지
   //    (정리 안 되면 탭을 닫을 때마다 클라이언트에 스트림이 쌓인다)
   await new Promise((resolve) => {
-    const r = http.request(
+    const r = transport.request(
       {
-        host: "localhost",
+        host: HOST,
         port: PORT,
         path: "/sse",
-        headers: { Cookie: `tunnelId=${TUNNEL_ID}` },
+        headers: { Host: HOST, Cookie: `tunnelId=${TUNNEL_ID}` },
       },
       (res) => {
         let n = 0;
