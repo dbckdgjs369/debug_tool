@@ -89,10 +89,22 @@ function cleanup() {
   const wsCode = await new Promise((resolve) => wsCheck.on("exit", resolve));
 
   console.log("=".repeat(50));
+  const injCheck = spawn("node", [path.join(__dirname, "inject.js"), tunnelId], {
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      TARGET_HOST: HTTP_HOST,
+      TARGET_PORT: "443",
+      TARGET_PROTO: "https",
+    },
+  });
+  const injCode = await new Promise((resolve) => injCheck.on("exit", resolve));
+
+  console.log("=".repeat(50));
   console.log("--- 클라이언트 로그 (마지막 15줄) ---");
   console.log(client.buf.trim().split("\n").slice(-15).join("\n"));
   cleanup();
-  process.exit(code || wsCode || 0);
+  process.exit(code || wsCode || injCode || 0);
 })().catch((e) => {
   console.error("오케스트레이션 실패:", e.message);
   cleanup();

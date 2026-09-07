@@ -76,6 +76,14 @@ function cleanup() {
   });
   const wsCode = await new Promise((resolve) => wsCheck.on("exit", resolve));
 
+  console.log("=".repeat(50));
+  const injCheck = spawn(
+    "node",
+    [path.join(__dirname, "inject.js"), tunnelId, "8099"],
+    { stdio: "inherit" },
+  );
+  const injCode = await new Promise((resolve) => injCheck.on("exit", resolve));
+
   let extraFailed = 0;
   const assert = (name, pass, detail) => {
     if (!pass) extraFailed++;
@@ -144,7 +152,7 @@ function cleanup() {
   console.log("--- 클라이언트 로그 (마지막 8줄) ---");
   console.log(client.buf.trim().split("\n").slice(-8).join("\n"));
   cleanup();
-  process.exit(code || wsCode || extraFailed ? 1 : 0);
+  process.exit(code || wsCode || injCode || extraFailed ? 1 : 0);
 })().catch((e) => {
   console.error("오케스트레이션 실패:", e.message);
   cleanup();

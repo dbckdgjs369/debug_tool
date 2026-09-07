@@ -649,6 +649,112 @@ function injectConsoleCapture(html) {
     } else {
       console.log('[Tunnel] 터널 ID 없음 - 원격 콘솔 비활성화');
     }
+
+    // ── 로컬 절대 주소 → 페이지 출처로 되돌리기 ──────────────────────────
+    // 개발 서버는 자기 host/port를 클라이언트 번들에 박아두는 경우가 많다.
+    // 예: webpack-dev-server는 ?hostname=0.0.0.0&port=3001 을 심고, 브라우저
+    // 쪽 코드가 hostname만 페이지 호스트로 바꾸고 port는 그대로 써서
+    // wss://<터널호스트>:3001/ws 로 붙으려 한다 — 그런 포트는 없다.
+    // Vite도 server.hmr.clientPort를 쓰면 같은 증상이 난다.
+    // 여기서 주소를 페이지 출처로 되돌려 프로젝트 코드를 고치지 않게 한다.
+    var loc = window.location;
+    var pageSecure = loc.protocol === 'https:';
+    var LOCAL_HOSTS = {
+      'localhost': 1, '127.0.0.1': 1, '0.0.0.0': 1, '[::1]': 1, '[::]': 1
+    };
+
+    // 되돌릴 대상이면 새 주소를, 아니면 null을 반환한다.
+    // 다른 호스트(예: wss://api.example.com)는 건드리지 않는다.
+    function toPageOrigin(raw, wantWs) {
+      var s = String(raw);
+      // 상대 주소는 이미 페이지 출처를 쓰므로 손대지 않는다
+      if (!/^([a-zA-Z][a-zA-Z0-9+.\\-]*:)?\\/\\//.test(s)) return null;
+      var u;
+      try { u = new URL(s, loc.href); } catch (e) { return null; }
+      var p = u.protocol;
+      if (p !== 'ws:' && p !== 'wss:' && p !== 'http:' && p !== 'https:') return null;
+      var isLocal = LOCAL_HOSTS[u.hostname] === 1;
+      var otherPort = u.hostname === loc.hostname && u.port !== loc.port;
+      if (!isLocal && !otherPort) return null;
+      try {
+        u.protocol = wantWs
+          ? (pageSecure ? 'wss:' : 'ws:')
+          : (pageSecure ? 'https:' : 'http:');
+        u.hostname = loc.hostname;
+        u.port = loc.port; // 빈 문자열이면 포트가 지워진다(기본 포트)
+      } catch (e) { return null; }
+      var out = u.toString();
+      return out === s ? null : out;
+    }
+
+    var NativeWS = window.WebSocket;
+    if (NativeWS) {
+      var PatchedWS = function(url, protocols) {
+        var fixed = toPageOrigin(url, true);
+        if (fixed) {
+          console.log('[Tunnel] WebSocket 주소 교정: ' + url + ' → ' + fixed);
+          url = fixed;
+        }
+        // 생성자가 객체를 반환하면 그 객체가 인스턴스가 된다.
+        return arguments.length > 1
+          ? new NativeWS(url, protocols)
+          : new NativeWS(url);
+      };
+      PatchedWS.prototype = NativeWS.prototype; // instanceof 유지
+      PatchedWS.CONNECTING = NativeWS.CONNECTING;
+      PatchedWS.OPEN = NativeWS.OPEN;
+      PatchedWS.CLOSING = NativeWS.CLOSING;
+      PatchedWS.CLOSED = NativeWS.CLOSED;
+      window.WebSocket = PatchedWS;
+    }
+
+    var NativeES = window.EventSource;
+    if (NativeES) {
+      var PatchedES = function(url, config) {
+        var fixed = toPageOrigin(url, false);
+        if (fixed) {
+          console.log('[Tunnel] EventSource 주소 교정: ' + url + ' → ' + fixed);
+          url = fixed;
+        }
+        return arguments.length > 1
+          ? new NativeES(url, config)
+          : new NativeES(url);
+      };
+      PatchedES.prototype = NativeES.prototype;
+      PatchedES.CONNECTING = NativeES.CONNECTING;
+      PatchedES.OPEN = NativeES.OPEN;
+      PatchedES.CLOSED = NativeES.CLOSED;
+      window.EventSource = PatchedES;
+    }
+
+    if (typeof window.fetch === 'function') {
+      var nativeFetch = window.fetch;
+      window.fetch = function(input, init) {
+        try {
+          if (typeof input === 'string' || input instanceof URL) {
+            var fixed = toPageOrigin(input, false);
+            if (fixed) { input = fixed; }
+          } else if (input && typeof input.url === 'string') {
+            var f2 = toPageOrigin(input.url, false);
+            if (f2) { input = new Request(f2, input); }
+          }
+        } catch (e) {}
+        return nativeFetch.call(this, input, init);
+      };
+    }
+
+    var xhrProto = window.XMLHttpRequest && window.XMLHttpRequest.prototype;
+    if (xhrProto && typeof xhrProto.open === 'function') {
+      var nativeOpen = xhrProto.open;
+      xhrProto.open = function(method, url) {
+        var args = Array.prototype.slice.call(arguments);
+        try {
+          var fixed = toPageOrigin(url, false);
+          if (fixed) { args[1] = fixed; }
+        } catch (e) {}
+        return nativeOpen.apply(this, args);
+      };
+    }
   })();
 </script>`;
 

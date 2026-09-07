@@ -2,6 +2,29 @@
 
 All notable changes to the "custom-tunnel" extension will be documented in this file.
 
+## [2.1.3] - 2026-09-07
+
+### 추가
+
+- **개발 서버가 번들에 박아둔 로컬 주소를 페이지 출처로 교정**한다 →
+  **CRA(webpack-dev-server)에서 HMR/핫 리로드 동작**. webpack-dev-server는
+  자기 host/port를 클라이언트 번들에 심고(`?hostname=0.0.0.0&port=3001`),
+  브라우저 쪽 코드가 hostname만 페이지 호스트로 바꾸고 port는 그대로 쓴다.
+  그래서 브라우저가 `wss://<터널호스트>:3001/ws`로 붙으려 하고 — 그런 포트는
+  없으므로 — HMR 소켓이 터널에 도달조차 못 했다(새로고침해야 변경사항이 보였다).
+  이제 주입 스크립트가 `WebSocket`·`EventSource`·`fetch`·`XMLHttpRequest`를
+  감싸, 로컬 절대 주소(`localhost`/`127.0.0.1`/`0.0.0.0`)와 "호스트는 같은데
+  포트만 다른" 주소를 페이지 출처로 되돌린다. 프로젝트 코드는 건드리지 않는다.
+  Vite의 `server.hmr.clientPort`를 쓰는 설정도 같이 해결된다.
+  다른 호스트(`wss://api.example.com`)와 상대 주소는 건드리지 않는다.
+- 주입 스크립트 검증 `custom-tunnel/test/inject.js` (18개) — 터널로 받은 HTML
+  에서 스크립트를 꺼내 가짜 브라우저에서 실행해 교정 결과를 확인한다
+
+### 알려진 제약
+
+- 교정은 페이지 전역에만 적용된다. Web Worker/Service Worker 안에서 여는
+  WebSocket은 별도 전역이라 대상이 아니다.
+
 ## [2.1.2] - 2026-09-07
 
 ### 추가
